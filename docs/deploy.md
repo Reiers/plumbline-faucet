@@ -43,23 +43,23 @@ npm install -g pnpm
 useradd --system --no-create-home --shell /usr/sbin/nologin faucet
 
 # Code
-mkdir -p /opt/calibration-faucet
-chown faucet:faucet /opt/calibration-faucet
-sudo -u faucet -H git clone https://github.com/Reiers/calibration-faucet /opt/calibration-faucet
-cd /opt/calibration-faucet
+mkdir -p /opt/plumbline-faucet
+chown faucet:faucet /opt/plumbline-faucet
+sudo -u faucet -H git clone https://github.com/Reiers/plumbline-faucet /opt/plumbline-faucet
+cd /opt/plumbline-faucet
 sudo -u faucet -H pnpm install --prod=false   # we run via tsx, need devdeps
 
 # Config
-sudo -u faucet -H install -m 0600 /dev/null /opt/calibration-faucet/.env
-$EDITOR /opt/calibration-faucet/.env
-chown faucet:faucet /opt/calibration-faucet/.env
-chmod 600 /opt/calibration-faucet/.env
+sudo -u faucet -H install -m 0600 /dev/null /opt/plumbline-faucet/.env
+$EDITOR /opt/plumbline-faucet/.env
+chown faucet:faucet /opt/plumbline-faucet/.env
+chmod 600 /opt/plumbline-faucet/.env
 
 # systemd unit
-cp ops/calibration-faucet.service /etc/systemd/system/
+cp ops/plumbline-faucet.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now calibration-faucet
-systemctl status calibration-faucet
+systemctl enable --now plumbline-faucet
+systemctl status plumbline-faucet
 ```
 
 ## TLS via Caddy
@@ -104,7 +104,7 @@ when `TURNSTILE_SECRET` is set.
 ### Logs
 
 ```bash
-journalctl -u calibration-faucet -f --output=cat
+journalctl -u plumbline-faucet -f --output=cat
 ```
 
 Drip-success lines look like:
@@ -125,21 +125,21 @@ returning `503 faucet_dry`. Either:
 ### Rotate the dispenser key
 
 1. Provision a new key, fund it.
-2. Edit `/opt/calibration-faucet/.env` (set new `FAUCET_PK`).
-3. `systemctl restart calibration-faucet`.
+2. Edit `/opt/plumbline-faucet/.env` (set new `FAUCET_PK`).
+3. `systemctl restart plumbline-faucet`.
 4. Drain the old key with a manual `cast send` to the new dispenser if
    needed.
 
 ### Change rate limits or drip amounts
 
-Edit `/opt/calibration-faucet/.env` and `systemctl restart`. SQLite
+Edit `/opt/plumbline-faucet/.env` and `systemctl restart`. SQLite
 state persists across restarts, so existing cooldowns are honored.
 
 ### Reset rate limits (admin)
 
 ```bash
-sudo -u faucet -H rm /opt/calibration-faucet/rate-limits.sqlite*
-systemctl restart calibration-faucet
+sudo -u faucet -H rm /opt/plumbline-faucet/rate-limits.sqlite*
+systemctl restart plumbline-faucet
 ```
 
 (Drops every cooldown for everyone; only do this for emergencies or
@@ -151,6 +151,6 @@ during testing.)
 | --- | --- | --- |
 | `503 faucet_dry` | Dispenser below reserve | Top up |
 | `400 captcha turnstile_invalid-input-secret` | `TURNSTILE_SECRET` wrong | Re-check Cloudflare config |
-| Nginx/Caddy 502 | Node process died | `journalctl -u calibration-faucet -n 200` |
+| Nginx/Caddy 502 | Node process died | `journalctl -u plumbline-faucet -n 200` |
 | Drip submitted but tx never lands | Glif RPC slow/down | Switch `RPC_URL` to a different Calibration RPC |
 | All requests 429 from a real user behind NAT | Per-IP cooldown collides with their NAT pool | Lower `IP_RATE_LIMIT_SEC` or remove per-IP and rely on per-address only (raise `ADDRESS_RATE_LIMIT_SEC`) |

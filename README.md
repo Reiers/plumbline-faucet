@@ -1,9 +1,16 @@
 <div align="center">
-  <img src="public/logo.svg" alt="Plumb" width="64" height="64" />
-  <h1>Plumb</h1>
-  <p>Public Filecoin Calibration testnet faucet. Drips <strong>tFIL</strong> and <strong>USDFC</strong> independently for builders and Storage Providers.</p>
-  <p><sub>Calibration testnet only. Don't deploy this to mainnet.</sub></p>
+  <a href="https://github.com/Reiers/plumbline">
+    <img src="https://raw.githubusercontent.com/Reiers/plumbline/main/brand/banner.png" alt="Plumbline — public faucet" />
+  </a>
 </div>
+
+# plumbline-faucet
+
+Public Filecoin Calibration testnet faucet. Drips **tFIL** and **USDFC** independently for builders and Storage Providers. Live at **<https://faucet.reiers.io>**.
+
+Part of the [**Plumbline**](https://github.com/Reiers/plumbline) umbrella — stability infrastructure for Filecoin Calibration.
+
+> _Calibration testnet only. Don't deploy this to mainnet._
 
 ---
 

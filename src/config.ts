@@ -14,6 +14,8 @@ export interface FaucetConfig {
   HOST: string
   RPC_URL: string
   USDFC_ADDRESS: Address
+  /** Address of the deployed CallActorForwarder used for native t1/t2/t3/t0 sends. */
+  CALL_ACTOR_FORWARDER: Address
   FAUCET_PK: `0x${string}`
 
   // ─── Drip amounts ────────────────────────────────────────────────
@@ -72,6 +74,10 @@ export function loadConfig(): FaucetConfig {
     USDFC_ADDRESS: opt(
       'USDFC_ADDRESS',
       '0xb3042734b608a1B16e9e86B374A3f3e389B4cDf0',
+    ) as Address,
+    CALL_ACTOR_FORWARDER: opt(
+      'CALL_ACTOR_FORWARDER',
+      '0x0bcad9b028e5bc50dd8113814c2ae0255094a9e7',
     ) as Address,
     FAUCET_PK: required('FAUCET_PK') as `0x${string}`,
 

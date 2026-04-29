@@ -18,20 +18,11 @@
   <body>
     <nav class="nav">
       <a href="/" class="logo" aria-label="Plumbline">
-        <svg viewBox="0 0 64 64" width="28" height="28" fill="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="navg" x1="32" y1="4" x2="32" y2="60" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#7dd3fc"/><stop offset="50%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0090ff"/>
-            </linearGradient>
-          </defs>
-          <rect x="20" y="3" width="24" height="3" rx="1.5" fill="#fff" fill-opacity=".9"/>
-          <rect x="31" y="6" width="2" height="22" fill="#fff" fill-opacity=".9"/>
-          <path d="M32 22 C 22 32, 14 41, 14 48 C 14 56.5, 22 60.5, 32 60.5 C 42 60.5, 50 56.5, 50 48 C 50 41, 42 32, 32 22 Z" fill="url(#navg)"/>
-          <g transform="translate(32 47)">
-            <path d="M -7 -4 L 7 -4 M -8 1 L 6 1 M -3 -8 C -3 8, -1 9, 4 8" stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none"/>
-          </g>
-        </svg>
-        <span>Plumbline</span>
+        <span class="logo-mark" aria-hidden="true">
+          <span class="logo-string"></span>
+          <span class="logo-coin"></span>
+        </span>
+        <span class="logo-word">Plumbline</span>
       </a>
       <div class="nav-links">
         <a href="/">Faucet</a>
@@ -80,9 +71,9 @@
             <h2 id="fil-title">tFIL</h2>
             <span class="asset-amount"><strong id="m-fil">…</strong></span>
           </div>
-          <p class="card-help">Native gas. Accepted recipients: <code>0x</code> · <code>f1</code>/<code>t1</code> · <code>f2</code>/<code>t2</code> · <code>f3</code>/<code>t3</code> · <code>f4</code>/<code>t4</code></p>
           <form data-asset="fil" class="form-stack">
             <input id="addr-fil" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="f1… / f3… / 0x… / t410f…" required />
+            <p class="input-hint">Native gas. Accepted: <code>0x</code> · <code>f1</code>/<code>t1</code> · <code>f2</code>/<code>t2</code> · <code>f3</code>/<code>t3</code> · <code>f4</code>/<code>t4</code></p>
             <button type="submit" class="primary fil-btn" disabled>Solve captcha to unlock</button>
           </form>
         </section>
@@ -94,9 +85,9 @@
             <h2 id="usdfc-title">USDFC</h2>
             <span class="asset-amount"><strong id="m-usdfc">…</strong></span>
           </div>
-          <p class="card-help">Filecoin-native stablecoin (ERC-20). Accepted: <code>0x</code> · <code>f4</code>/<code>t410f</code> only.</p>
           <form data-asset="usdfc" class="form-stack">
             <input id="addr-usdfc" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="0x... or t410f..." required />
+            <p class="input-hint">ERC-20 stablecoin. Accepted: <code>0x</code> · <code>f4</code>/<code>t410f</code> only. Native t1/t3/t0 not supported.</p>
             <button type="submit" class="primary usdfc-btn" disabled>Solve captcha to unlock</button>
           </form>
         </section>

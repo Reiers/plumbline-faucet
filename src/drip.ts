@@ -28,8 +28,6 @@ import {
   http,
   createPublicClient,
   createWalletClient,
-  encodeAbiParameters,
-  parseAbiParameters,
   toHex,
   erc20Abi,
 } from 'viem'
@@ -38,20 +36,23 @@ import { filecoinCalibration } from 'viem/chains'
 import type { FaucetConfig } from './config.js'
 import type { RecipientShape } from './fil-address.js'
 
-const CALL_ACTOR_BY_ADDRESS_PRECOMPILE: Address =
-  '0xfe00000000000000000000000000000000000003'
-// CallActor precompile takes raw abi.encode of
-//   (uint64 method, uint256 value, uint64 send_flags, uint64 codec,
-//    bytes raw_request, bytes target_address)
-// with NO function selector prefix. Reference: filecoin-solidity
-// Actor.callByAddress, which builds the calldata via abi.encode (NOT
-// abi.encodeWithSelector). My first attempt prepended a phantom
-// selector and the precompile could not parse it — the value got
-// retained at the precompile's own account instead of being forwarded
-// to the target.
-const METHOD_SEND = 0n
-const SEND_FLAGS = 0n
-const CODEC_NONE = 0n
+// The CallActor precompile at 0xfe00...0003 only behaves correctly when
+// invoked via DELEGATECALL from a contract context. Calling it directly
+// from an EOA (which is what wallet.sendTransaction does) returns
+// status=success but silently keeps msg.value at the precompile's own
+// account. We therefore route native sends through a tiny forwarder
+// contract (deployed on Calibration at the address in cfg.CALL_ACTOR_FORWARDER)
+// whose only job is to delegatecall the precompile with the right calldata.
+// See contracts/CallActorForwarder.sol.
+const FORWARDER_ABI = [
+  {
+    type: 'function',
+    name: 'sendFil',
+    stateMutability: 'payable',
+    inputs: [{ name: 'target', type: 'bytes' }],
+    outputs: [],
+  },
+] as const
 const USDFC_DECIMALS = 18
 
 export interface DripResult {
@@ -153,38 +154,27 @@ export class Drip {
     }
 
     if (recipient.kind === 'filecoin') {
-      // CallActor(method=0, value, send_flags=0, codec=0, params=0x, addr_bytes)
-      const calldata = encodeAbiParameters(
-        parseAbiParameters('uint64, uint256, uint64, uint64, bytes, bytes'),
-        [
-          METHOD_SEND,
-          amount,
-          SEND_FLAGS,
-          CODEC_NONE,
-          '0x',
-          toHex(recipient.bytes),
-        ],
-      )
-
-      // Pre-flight: eth_call the precompile (zero value) to validate the
-      // calldata parses. If it doesn't, abort before sending real tFIL
-      // — a malformed precompile call won't revert, it'll silently keep
-      // the value at the precompile's own address (we lost 5000 tFIL
-      // this way during testing on Apr 29).
-      try {
-        await this.pub.call({
-          to: CALL_ACTOR_BY_ADDRESS_PRECOMPILE,
-          data: calldata,
-          account: this.wallet.account!,
-        })
-      } catch (err) {
-        throw new Error(`CallActor precompile pre-flight failed: ${String(err).slice(0, 200)}`)
-      }
-
+      // Route through the forwarder contract; the forwarder delegatecalls
+      // the CallActor precompile so the cross-actor send has a proper
+      // contract context (the forwarder's f410f becomes the from-actor).
       const before = await filecoinWalletBalance(this.cfg.RPC_URL, recipient.original)
-      const txHash = await this.wallet.sendTransaction({
-        to: CALL_ACTOR_BY_ADDRESS_PRECOMPILE,
-        data: calldata,
+
+      // Pre-flight: simulate the contract call so a malformed encoding
+      // reverts cheaply instead of silently keeping the value.
+      await this.pub.simulateContract({
+        address: this.cfg.CALL_ACTOR_FORWARDER,
+        abi: FORWARDER_ABI,
+        functionName: 'sendFil',
+        args: [toHex(recipient.bytes)],
+        value: amount,
+        account: this.wallet.account!,
+      })
+
+      const txHash = await this.wallet.writeContract({
+        address: this.cfg.CALL_ACTOR_FORWARDER,
+        abi: FORWARDER_ABI,
+        functionName: 'sendFil',
+        args: [toHex(recipient.bytes)],
         value: amount,
         account: this.wallet.account!,
         chain: filecoinCalibration,

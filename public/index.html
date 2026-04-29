@@ -44,12 +44,18 @@
 
     <main>
       <section class="hero">
-        <div class="chain-tag">
-          <svg width="14" height="14" viewBox="0 0 64 64" aria-hidden="true">
-            <circle cx="32" cy="32" r="30" fill="#0090FF"/>
-            <path d="M 23 24 L 41 24 M 22 32 L 38 32 M 30 18 C 30 46, 32 48, 38 46" stroke="#fff" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-          </svg>
-          <span>Filecoin Calibration · chain id 314159</span>
+        <div class="hero-tags">
+          <div class="chain-tag">
+            <svg width="14" height="14" viewBox="0 0 64 64" aria-hidden="true">
+              <circle cx="32" cy="32" r="30" fill="#0090FF"/>
+              <path d="M 23 24 L 41 24 M 22 32 L 38 32 M 30 18 C 30 46, 32 48, 38 46" stroke="#fff" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+            </svg>
+            <span>Filecoin Calibration · chain id 314159</span>
+          </div>
+          <div class="chain-tag soon">
+            <span class="soon-dot"></span>
+            <span>DataCap · coming soon</span>
+          </div>
         </div>
         <h1>Plumbing for <span class="grad">builders &amp; SPs</span></h1>
         <p>
@@ -74,9 +80,9 @@
             <h2 id="fil-title">tFIL</h2>
             <span class="asset-amount"><strong id="m-fil">…</strong></span>
           </div>
-          <p class="card-help">Native gas. Accepted recipients: <code>0x</code> · <code>t410f</code> · <code>t1</code> · <code>t3</code></p>
+          <p class="card-help">Native gas. Accepted recipients: <code>0x</code> · <code>f1</code>/<code>t1</code> · <code>f2</code>/<code>t2</code> · <code>f3</code>/<code>t3</code> · <code>f4</code>/<code>t4</code></p>
           <form data-asset="fil" class="form-stack">
-            <input id="addr-fil" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="t1abc... or 0x... or t410f..." required />
+            <input id="addr-fil" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="f1… / f3… / 0x… / t410f…" required />
             <button type="submit" class="primary fil-btn" disabled>Solve captcha to unlock</button>
           </form>
         </section>
@@ -88,7 +94,7 @@
             <h2 id="usdfc-title">USDFC</h2>
             <span class="asset-amount"><strong id="m-usdfc">…</strong></span>
           </div>
-          <p class="card-help">Filecoin-native stablecoin. Accepted: <code>0x</code> · <code>t410f</code></p>
+          <p class="card-help">Filecoin-native stablecoin (ERC-20). Accepted: <code>0x</code> · <code>f4</code>/<code>t410f</code> only.</p>
           <form data-asset="usdfc" class="form-stack">
             <input id="addr-usdfc" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="0x... or t410f..." required />
             <button type="submit" class="primary usdfc-btn" disabled>Solve captcha to unlock</button>

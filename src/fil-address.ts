@@ -19,7 +19,7 @@ import { type Address, isAddress } from 'viem'
 export type RecipientShape =
   | { kind: 'eth'; address: Address }
   | { kind: 'delegated'; address: Address; original: string } // t4/f4 → 0x
-  | { kind: 'filecoin'; protocol: 0 | 1 | 3; bytes: Uint8Array; original: string }
+  | { kind: 'filecoin'; protocol: 0 | 1 | 2 | 3; bytes: Uint8Array; original: string }
   | { kind: 'invalid'; reason: string }
 
 const FIL_ADDR = /^[ft][0-4][a-zA-Z0-9]+$/
@@ -49,11 +49,13 @@ export function classifyRecipient(input: string): RecipientShape {
     if (!f4) return { kind: 'invalid', reason: 'unsupported_delegated_namespace' }
     return { kind: 'delegated', address: f4, original: s }
   }
-  if (protocol === 1 || protocol === 3) {
+  if (protocol === 1 || protocol === 2 || protocol === 3) {
     const decoded = base32Decode(s.slice(2))
     if (!decoded) return { kind: 'invalid', reason: 'malformed_base32' }
-    // payload + 4-byte checksum
-    const expectedLen = protocol === 1 ? 24 : 52
+    // payload + 4-byte checksum. Protocol 1 (secp256k1) and protocol 2
+    // (actor) both have 20-byte payloads (Blake2b-160 hashes); protocol
+    // 3 (BLS) has a 48-byte payload (the BLS pubkey).
+    const expectedLen = protocol === 3 ? 52 : 24
     if (decoded.length !== expectedLen) {
       return { kind: 'invalid', reason: `unexpected_length_${decoded.length}` }
     }

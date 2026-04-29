@@ -56,6 +56,10 @@ main { max-width: 1080px; margin: 0 auto; padding: 16px 24px 64px; }
 
 /* ─── Hero ────────────────────────────────────────────────────── */
 .hero { text-align: center; padding: 40px 0 28px; }
+.hero-tags {
+  display: inline-flex; gap: 8px; margin-bottom: 22px;
+  flex-wrap: wrap; justify-content: center;
+}
 .chain-tag {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 12px 6px 8px; border-radius: 8px;
@@ -64,10 +68,24 @@ main { max-width: 1080px; margin: 0 auto; padding: 16px 24px 64px; }
   color: #7dd3fc;
   font-family: ui-monospace, 'SF Mono', monospace;
   font-size: 12px;
-  margin-bottom: 22px;
   letter-spacing: 0.01em;
 }
 .chain-tag svg { flex-shrink: 0; }
+.chain-tag.soon {
+  padding: 6px 12px;
+  background: rgba(251, 191, 36, .07);
+  border-color: rgba(251, 191, 36, .25);
+  color: #fcd34d;
+}
+.chain-tag.soon .soon-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, .6);
+  animation: soon-pulse 2.4s ease-in-out infinite;
+}
+@keyframes soon-pulse {
+  0%, 100% { opacity: 0.4 } 50% { opacity: 1 }
+}
 .hero h1 { font-size: clamp(36px, 6vw, 56px); font-weight: 700; letter-spacing: -0.025em; line-height: 1.05; margin: 0 0 16px; }
 .hero h1 .grad {
   background: var(--grad-hero);

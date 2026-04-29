@@ -40,9 +40,15 @@ import type { RecipientShape } from './fil-address.js'
 
 const CALL_ACTOR_BY_ADDRESS_PRECOMPILE: Address =
   '0xfe00000000000000000000000000000000000003'
-// 4-byte selector the precompile expects on the head of its calldata
-// (matches `Misc.CALL_ACTOR_BY_ADDRESS_SELECTOR` from filecoin-solidity).
-const CALL_ACTOR_BY_ADDRESS_SELECTOR = '0x844e0e51'
+// CallActor precompile takes raw abi.encode of
+//   (uint64 method, uint256 value, uint64 send_flags, uint64 codec,
+//    bytes raw_request, bytes target_address)
+// with NO function selector prefix. Reference: filecoin-solidity
+// Actor.callByAddress, which builds the calldata via abi.encode (NOT
+// abi.encodeWithSelector). My first attempt prepended a phantom
+// selector and the precompile could not parse it — the value got
+// retained at the precompile's own account instead of being forwarded
+// to the target.
 const METHOD_SEND = 0n
 const SEND_FLAGS = 0n
 const CODEC_NONE = 0n
@@ -148,7 +154,7 @@ export class Drip {
 
     if (recipient.kind === 'filecoin') {
       // CallActor(method=0, value, send_flags=0, codec=0, params=0x, addr_bytes)
-      const args = encodeAbiParameters(
+      const calldata = encodeAbiParameters(
         parseAbiParameters('uint64, uint256, uint64, uint64, bytes, bytes'),
         [
           METHOD_SEND,
@@ -159,11 +165,23 @@ export class Drip {
           toHex(recipient.bytes),
         ],
       )
-      const calldata = (CALL_ACTOR_BY_ADDRESS_SELECTOR + args.slice(2)) as `0x${string}`
 
-      // Pre-flight: read recipient native balance via Filecoin RPC
+      // Pre-flight: eth_call the precompile (zero value) to validate the
+      // calldata parses. If it doesn't, abort before sending real tFIL
+      // — a malformed precompile call won't revert, it'll silently keep
+      // the value at the precompile's own address (we lost 5000 tFIL
+      // this way during testing on Apr 29).
+      try {
+        await this.pub.call({
+          to: CALL_ACTOR_BY_ADDRESS_PRECOMPILE,
+          data: calldata,
+          account: this.wallet.account!,
+        })
+      } catch (err) {
+        throw new Error(`CallActor precompile pre-flight failed: ${String(err).slice(0, 200)}`)
+      }
+
       const before = await filecoinWalletBalance(this.cfg.RPC_URL, recipient.original)
-
       const txHash = await this.wallet.sendTransaction({
         to: CALL_ACTOR_BY_ADDRESS_PRECOMPILE,
         data: calldata,

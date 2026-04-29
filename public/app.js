@@ -206,7 +206,20 @@ document.querySelectorAll('form[data-asset]').forEach((form) => {
         input.value = ''
         setTimeout(refresh, 800)
       } else if (data.error === 'ip_rate_limited' || data.error === 'address_rate_limited') {
-        modal.error(asset, recipient, `Rate limited. Try again in <strong>${fmtSec(data.retryAfterSec)}</strong>.`)
+        const scopeLabel = data.scope === 'ip' ? 'this IP' : 'this address'
+        const assetLabel = asset === 'fil' ? 'tFIL' : 'USDFC'
+        const retryAt = new Date((data.retryAtUnix || 0) * 1000)
+        const retryWhen = retryAt.toLocaleString(undefined, {
+          weekday: 'short', hour: '2-digit', minute: '2-digit'
+        })
+        modal.error(
+          asset, recipient,
+          `<strong>${data.used} of ${data.max}</strong> ${assetLabel} drips already used by ${scopeLabel} ` +
+          `in this ${fmtSec(data.windowSec)} window.<br><br>` +
+          `Next ${assetLabel} drip available <strong>${retryWhen}</strong> ` +
+          `(in ${fmtSec(data.retryAfterSec)}).<br><br>` +
+          `Need more before then? <a href="#contact">Ping @Reiers on Slack</a>.`,
+        )
       } else if (data.error === 'faucet_dry') {
         modal.error(asset, recipient, 'Faucet temporarily out of funds. Refilling shortly.')
       } else if (data.error === 'captcha') {

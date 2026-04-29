@@ -23,6 +23,10 @@ export interface FaucetConfig {
   // ─── Rate limits ─────────────────────────────────────────────────
   IP_RATE_LIMIT_SEC: number
   ADDRESS_RATE_LIMIT_SEC: number
+  /** Max drips per IP per asset within IP_RATE_LIMIT_SEC. */
+  MAX_DRIPS_PER_IP: number
+  /** Max drips per address per asset within ADDRESS_RATE_LIMIT_SEC. */
+  MAX_DRIPS_PER_ADDRESS: number
   GLOBAL_RPS: number
 
   // ─── Bot protection ──────────────────────────────────────────────
@@ -76,6 +80,8 @@ export function loadConfig(): FaucetConfig {
 
     IP_RATE_LIMIT_SEC: optNum('IP_RATE_LIMIT_SEC', 86_400),       // 24h
     ADDRESS_RATE_LIMIT_SEC: optNum('ADDRESS_RATE_LIMIT_SEC', 86_400),
+    MAX_DRIPS_PER_IP:      optNum('MAX_DRIPS_PER_IP',      2),
+    MAX_DRIPS_PER_ADDRESS: optNum('MAX_DRIPS_PER_ADDRESS', 2),
     GLOBAL_RPS: optNum('GLOBAL_RPS', 5),
 
     TURNSTILE_SITE_KEY: process.env.TURNSTILE_SITE_KEY ?? null,

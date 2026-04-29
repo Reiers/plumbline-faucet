@@ -94,6 +94,8 @@ async function main() {
       usdfcDrip: cfg.USDFC_DRIP,
       ipRateLimitSec: cfg.IP_RATE_LIMIT_SEC,
       addressRateLimitSec: cfg.ADDRESS_RATE_LIMIT_SEC,
+      maxDripsPerIp: cfg.MAX_DRIPS_PER_IP,
+      maxDripsPerAddress: cfg.MAX_DRIPS_PER_ADDRESS,
       turnstileSiteKey: cfg.TURNSTILE_SITE_KEY,
       usdfcAddress: cfg.USDFC_ADDRESS,
       rpcUrl: cfg.RPC_URL,
@@ -215,20 +217,40 @@ async function main() {
     }
 
     const now = Math.floor(Date.now() / 1000)
-    const lastIp = store.lastDripForIp(ip, asset)
-    if (lastIp && now - lastIp < cfg.IP_RATE_LIMIT_SEC) {
+    const ipWin = store.windowForIp(ip, asset)
+    if (
+      ipWin &&
+      now - ipWin.windowStartUnix <= cfg.IP_RATE_LIMIT_SEC &&
+      ipWin.count >= cfg.MAX_DRIPS_PER_IP
+    ) {
+      const retryAfterSec = cfg.IP_RATE_LIMIT_SEC - (now - ipWin.windowStartUnix)
       return reply.code(429).send({
         ok: false,
         error: 'ip_rate_limited',
-        retryAfterSec: cfg.IP_RATE_LIMIT_SEC - (now - lastIp),
+        scope: 'ip',
+        used: ipWin.count,
+        max: cfg.MAX_DRIPS_PER_IP,
+        windowSec: cfg.IP_RATE_LIMIT_SEC,
+        retryAfterSec,
+        retryAtUnix: now + retryAfterSec,
       })
     }
-    const lastAddr = store.lastDripForAddress(target, asset)
-    if (lastAddr && now - lastAddr < cfg.ADDRESS_RATE_LIMIT_SEC) {
+    const addrWin = store.windowForAddress(target, asset)
+    if (
+      addrWin &&
+      now - addrWin.windowStartUnix <= cfg.ADDRESS_RATE_LIMIT_SEC &&
+      addrWin.count >= cfg.MAX_DRIPS_PER_ADDRESS
+    ) {
+      const retryAfterSec = cfg.ADDRESS_RATE_LIMIT_SEC - (now - addrWin.windowStartUnix)
       return reply.code(429).send({
         ok: false,
         error: 'address_rate_limited',
-        retryAfterSec: cfg.ADDRESS_RATE_LIMIT_SEC - (now - lastAddr),
+        scope: 'address',
+        used: addrWin.count,
+        max: cfg.MAX_DRIPS_PER_ADDRESS,
+        windowSec: cfg.ADDRESS_RATE_LIMIT_SEC,
+        retryAfterSec,
+        retryAtUnix: now + retryAfterSec,
       })
     }
 
@@ -240,7 +262,7 @@ async function main() {
 
     try {
       const result = asset === 'fil' ? await drip.dripFil(target) : await drip.dripUsdfc(target)
-      store.recordDrip(ip, target, asset, now)
+      store.recordDrip(ip, target, asset, now, cfg.IP_RATE_LIMIT_SEC)
       stats.recordDrip(
         now,
         target,

@@ -1,0 +1,33 @@
+[Unit]
+Description=Calibration Faucet (tFIL + USDFC)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=faucet
+Group=faucet
+WorkingDirectory=/opt/calibration-faucet
+EnvironmentFile=/opt/calibration-faucet/.env
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/opt/calibration-faucet
+# Faucet only ever opens outbound HTTP for RPC + Turnstile and listens
+# on its configured port; restrict accordingly.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -461,3 +461,16 @@ footer a:hover { color: var(--fg); }
   -webkit-text-fill-color: transparent;
   color: transparent;
 }
+
+/* ─── Top strip (above the nav) ───────────────────────────────── */
+.top-strip {
+  display: flex; justify-content: center;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 144, 255, 0.04);
+}
+.top-strip .chain-tag {
+  background: transparent; border: none;
+  padding: 0;
+  margin: 0;
+}

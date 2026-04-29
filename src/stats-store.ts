@@ -67,6 +67,10 @@ export class StatsStore {
     const hasLegacy = cols.some((c) => c.name === 'fil_tx') && cols.some((c) => c.name === 'usdfc_tx')
     if (!hasLegacy) return
     const tx = this.db.transaction(() => {
+      // Drop the old index first; renaming the table would otherwise leave
+      // it attached to recent_drips_v1, blocking us from re-creating the
+      // same name on the new table below.
+      this.db.exec(`DROP INDEX IF EXISTS recent_drips_unix_idx`)
       this.db.exec(`ALTER TABLE recent_drips RENAME TO recent_drips_v1`)
       this.db.exec(`
         CREATE TABLE recent_drips (

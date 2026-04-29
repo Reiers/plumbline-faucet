@@ -3,7 +3,7 @@
     <linearGradient id="plumb-grad" x1="32" y1="4" x2="32" y2="60" gradientUnits="userSpaceOnUse">
       <stop offset="0%"  stop-color="#7dd3fc"/>
       <stop offset="50%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0090ff"/>
     </linearGradient>
     <linearGradient id="plumb-line" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
@@ -14,7 +14,7 @@
   <rect x="20" y="3" width="24" height="3" rx="1.5" fill="url(#plumb-line)"/>
   <!-- plumbline (vertical reference) -->
   <rect x="31" y="6" width="2" height="22" fill="url(#plumb-line)"/>
-  <!-- plumb-bob / drop hybrid -->
+  <!-- drop body -->
   <path
     d="M32 22
        C 22 32, 14 41, 14 48
@@ -22,12 +22,11 @@
        C 42 60.5, 50 56.5, 50 48
        C 50 41, 42 32, 32 22 Z"
     fill="url(#plumb-grad)"/>
-  <!-- inner highlight -->
-  <path
-    d="M27 30
-       C 22 36, 19 42, 19.5 47
-       C 20.5 42, 24 36, 28.5 32 Z"
-    fill="#ffffff" fill-opacity="0.45"/>
-  <!-- horizontal flow tick (signature mark) -->
-  <rect x="22" y="50" width="20" height="2.4" rx="1.2" fill="#ffffff" fill-opacity="0.95"/>
+  <!-- Filecoin ƒ glyph centered in the drop -->
+  <g transform="translate(32 47)">
+    <!-- two crossbars + slanted leg of the florin -->
+    <path
+      d="M -7 -4 L 7 -4 M -8 1 L 6 1 M -3 -8 C -3 8, -1 9, 4 8"
+      stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+  </g>
 </svg>

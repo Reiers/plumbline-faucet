@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Plumb — Filecoin Calibration Faucet</title>
-    <meta name="description" content="Public Filecoin Calibration testnet faucet. Drips tFIL and USDFC for builders and Storage Providers." />
-    <meta property="og:title" content="Plumb — Filecoin Calibration Faucet" />
+    <title>Plumbline — Filecoin Calibration Faucet</title>
+    <meta name="description" content="Filecoin Calibration testnet faucet for builders and Storage Providers. tFIL and USDFC, dispensed independently." />
+    <meta property="og:title" content="Plumbline — Filecoin Calibration Faucet" />
     <meta property="og:description" content="tFIL + USDFC drip on Filecoin Calibration. Built for builders and Storage Providers." />
     <meta property="og:type" content="website" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -17,23 +17,26 @@
   </head>
   <body>
     <nav class="nav">
-      <a href="/" class="logo" aria-label="Plumb">
+      <a href="/" class="logo" aria-label="Plumbline">
         <svg viewBox="0 0 64 64" width="28" height="28" fill="none" aria-hidden="true">
           <defs>
             <linearGradient id="navg" x1="32" y1="4" x2="32" y2="60" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#7dd3fc"/><stop offset="50%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#2563eb"/>
+              <stop offset="0%" stop-color="#7dd3fc"/><stop offset="50%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0090ff"/>
             </linearGradient>
           </defs>
           <rect x="20" y="3" width="24" height="3" rx="1.5" fill="#fff" fill-opacity=".9"/>
           <rect x="31" y="6" width="2" height="22" fill="#fff" fill-opacity=".9"/>
           <path d="M32 22 C 22 32, 14 41, 14 48 C 14 56.5, 22 60.5, 32 60.5 C 42 60.5, 50 56.5, 50 48 C 50 41, 42 32, 32 22 Z" fill="url(#navg)"/>
-          <rect x="22" y="50" width="20" height="3" rx="1.5" fill="#fff" fill-opacity=".95"/>
+          <g transform="translate(32 47)">
+            <path d="M -7 -4 L 7 -4 M -8 1 L 6 1 M -3 -8 C -3 8, -1 9, 4 8" stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+          </g>
         </svg>
-        <span>Plumb</span>
+        <span>Plumbline</span>
       </a>
       <div class="nav-links">
         <a href="/">Faucet</a>
         <a href="/status">Status</a>
+        <a href="#tools">Tools</a>
         <a href="#contact">Contact</a>
         <a href="https://github.com/Reiers/calibration-faucet" target="_blank" rel="noopener">GitHub</a>
       </div>
@@ -41,12 +44,26 @@
 
     <main>
       <section class="hero">
-        <div class="pill" id="hero-pill">Filecoin Calibration testnet</div>
+        <div class="chain-tag">
+          <svg width="14" height="14" viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="30" fill="#0090FF"/>
+            <path d="M 23 24 L 41 24 M 22 32 L 38 32 M 30 18 C 30 46, 32 48, 38 46" stroke="#fff" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+          </svg>
+          <span>Filecoin Calibration · chain id 314159</span>
+        </div>
         <h1>Plumbing for <span class="grad">builders &amp; SPs</span></h1>
         <p>
           Free testnet <strong>tFIL</strong> and <strong>USDFC</strong>, dispensed independently.
-          Take only what you need — gas, payments, or both.
+          Take only what you need.
         </p>
+      </section>
+
+      <!-- Single captcha for the page -->
+      <section class="captcha-section" id="captcha-section">
+        <div class="captcha-row">
+          <span class="captcha-label">One-time check, then both faucets unlock:</span>
+          <div id="captcha-mount"></div>
+        </div>
       </section>
 
       <div class="grid-two">
@@ -55,15 +72,12 @@
           <div class="card-head">
             <span class="asset-mark fil"></span>
             <h2 id="fil-title">tFIL</h2>
-            <span class="asset-amount"><strong id="m-fil">…</strong> per drip</span>
+            <span class="asset-amount"><strong id="m-fil">…</strong></span>
           </div>
-          <p class="card-help">Native gas token. SPs and contract testers.</p>
+          <p class="card-help">Native gas. Accepted recipients: <code>0x</code> · <code>t410f</code> · <code>t1</code> · <code>t3</code></p>
           <form data-asset="fil" class="form-stack">
-            <label class="fieldlabel" for="addr-fil">Recipient address</label>
             <input id="addr-fil" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="t1abc... or 0x... or t410f..." required />
-            <p class="fieldhint" id="addr-fil-hint">Accepts 0x and t410f (delegated) addresses. Native t1/t3 SPs: paste your delegated 0x — derive with <code>lotus state account-key-eth &lt;t1addr&gt;</code>.</p>
-            <div class="captcha-mount" data-mount="fil"></div>
-            <button type="submit" class="primary fil-btn">Send tFIL</button>
+            <button type="submit" class="primary fil-btn" disabled>Solve captcha to unlock</button>
           </form>
         </section>
 
@@ -72,21 +86,18 @@
           <div class="card-head">
             <span class="asset-mark usdfc"></span>
             <h2 id="usdfc-title">USDFC</h2>
-            <span class="asset-amount"><strong id="m-usdfc">…</strong> per drip</span>
+            <span class="asset-amount"><strong id="m-usdfc">…</strong></span>
           </div>
-          <p class="card-help">Filecoin-native stablecoin (Trove-collateralized).</p>
+          <p class="card-help">Filecoin-native stablecoin. Accepted: <code>0x</code> · <code>t410f</code></p>
           <form data-asset="usdfc" class="form-stack">
-            <label class="fieldlabel" for="addr-usdfc">Recipient address</label>
-            <input id="addr-usdfc" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="0x..." required />
-            <p class="fieldhint">USDFC is an ERC-20. Only 0x and t410f (delegated) addresses work.</p>
-            <div class="captcha-mount" data-mount="usdfc"></div>
-            <button type="submit" class="primary usdfc-btn">Send USDFC</button>
+            <input id="addr-usdfc" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="0x... or t410f..." required />
+            <button type="submit" class="primary usdfc-btn" disabled>Solve captcha to unlock</button>
           </form>
         </section>
       </div>
 
       <!-- Live status strip -->
-      <section class="card status-strip" id="status-strip">
+      <section class="card status-strip">
         <div class="status-stack">
           <div class="status-line">
             <span class="status-label">tFIL reserve</span>
@@ -102,13 +113,26 @@
         <a href="/status" class="status-link">Full status →</a>
       </section>
 
+      <!-- Tools: address converter -->
+      <section class="card tools-card" id="tools" aria-labelledby="tools-title">
+        <h2 class="card-title" id="tools-title">Address converter <span class="card-subtle">0x ↔ t410f</span></h2>
+        <form id="converter-form" class="converter">
+          <input id="conv-input" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Paste a 0x or t410f address" />
+          <button type="submit" class="ghost">Convert</button>
+        </form>
+        <output id="conv-output" class="converter-output" aria-live="polite"></output>
+        <p class="tools-help">
+          Calls Filecoin's native JSON-RPC (<code>EthAddressToFilecoinAddress</code> /
+          <code>FilecoinAddressToEthAddress</code>) on the Calibration node.
+          Native <code>t1 / t3 / t0</code> have no lossless 0x form.
+        </p>
+      </section>
+
       <!-- Recent drips -->
       <section class="card feed" id="drips" aria-labelledby="recent-title">
         <h2 class="card-title" id="recent-title">Recent drips</h2>
         <table>
-          <thead>
-            <tr><th>When</th><th>Asset</th><th>Recipient</th><th>Tx</th></tr>
-          </thead>
+          <thead><tr><th>When</th><th>Asset</th><th>Recipient</th><th>Tx</th></tr></thead>
           <tbody id="recent-body"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
         </table>
       </section>
@@ -117,9 +141,8 @@
       <section class="card contact-card" id="contact">
         <h2 class="card-title">Need more?</h2>
         <p class="contact-text">
-          Standard drips capped at one per address per 24h.
-          For larger transfers, custom amounts, or stuck-on-chain debugging,
-          ping me on Slack:
+          Standard drips capped at one per address per 24h. Larger transfers,
+          custom amounts, or stuck-on-chain debugging:
         </p>
         <div class="contact-grid">
           <div class="contact-item">
@@ -128,7 +151,7 @@
             </svg>
             <div class="contact-meta">
               <strong>@Reiers</strong>
-              <span>Filecoin Slack — DM me directly for anything urgent.</span>
+              <span>Filecoin Slack — DM directly for anything urgent.</span>
             </div>
           </div>
           <div class="contact-item">
@@ -147,7 +170,7 @@
     <footer>
       <div class="footer-row">
         <div class="footer-brand">
-          <span id="brand-link">Plumb</span>
+          <span id="brand-link">Plumbline</span>
           ·
           <a href="https://github.com/Reiers/calibration-faucet" target="_blank" rel="noopener">source</a>
           ·
@@ -168,11 +191,11 @@
         <h3 class="modal-title" id="modal-title">Sending…</h3>
         <p class="modal-text" id="modal-text">Submitting transaction to Filecoin Calibration. This usually takes ~30 seconds.</p>
         <dl class="modal-details" id="modal-details" hidden>
-          <dt>Asset</dt>           <dd id="md-asset">—</dd>
-          <dt>Amount</dt>          <dd id="md-amount">—</dd>
-          <dt>Recipient</dt>       <dd id="md-recipient" class="mono">—</dd>
-          <dt>Tx hash</dt>         <dd id="md-tx" class="mono">—</dd>
-          <dt>Filfox</dt>          <dd id="md-filfox">—</dd>
+          <dt>Asset</dt>            <dd id="md-asset">—</dd>
+          <dt>Amount</dt>           <dd id="md-amount">—</dd>
+          <dt>Recipient</dt>        <dd id="md-recipient" class="mono">—</dd>
+          <dt>Tx hash</dt>          <dd id="md-tx" class="mono">—</dd>
+          <dt>Filfox</dt>           <dd id="md-filfox">—</dd>
           <dt>On-chain verified</dt><dd id="md-verified">—</dd>
         </dl>
       </div>

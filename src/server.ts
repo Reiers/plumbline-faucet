@@ -112,6 +112,58 @@ async function main() {
     return { drips: stats.recent(limit) }
   })
 
+  // ─── Address converter (0x ↔ f4) ───────────────────────────────
+  // Uses the Filecoin native JSON-RPC at glif (or whatever RPC_URL
+  // points at). Lotus exposes:
+  //   Filecoin.EthAddressToFilecoinAddress(0xabc) -> f410f…
+  //   Filecoin.FilecoinAddressToEthAddress(f410f…) -> 0xabc
+  // Native t1/t3/t0 addresses cannot be losslessly mapped to 0x; for
+  // those we return a friendly note pointing at the converter limits.
+  app.get('/api/convert', async (req) => {
+    const addr = String((req.query as { address?: string }).address ?? '').trim()
+    if (!addr) return { ok: false, error: 'missing_address' }
+
+    const isEth = /^0x[0-9a-fA-F]{40}$/.test(addr)
+    const isFil = /^[ft][0-4][a-zA-Z0-9]+$/.test(addr)
+    if (!isEth && !isFil) {
+      return { ok: false, error: 'invalid_address' }
+    }
+    if (isFil && !/^[ft]4/.test(addr)) {
+      return {
+        ok: false,
+        error: 'native_filecoin_no_eth_form',
+        reason:
+          'Native Filecoin addresses (t1/t3/t0) do not have a lossless 0x form. The converter handles 0x ↔ t410f only.',
+      }
+    }
+
+    const method = isEth
+      ? 'Filecoin.EthAddressToFilecoinAddress'
+      : 'Filecoin.FilecoinAddressToEthAddress'
+    try {
+      const res = await fetch(cfg.RPC_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method,
+          params: [addr],
+        }),
+      })
+      if (!res.ok) {
+        return { ok: false, error: 'rpc_http', reason: `status ${res.status}` }
+      }
+      const data = (await res.json()) as { result?: string; error?: { message?: string } }
+      if (data.error) {
+        return { ok: false, error: 'rpc_error', reason: data.error.message ?? 'unknown' }
+      }
+      return { ok: true, input: addr, output: data.result }
+    } catch (err) {
+      return { ok: false, error: 'rpc_unreachable', reason: String(err) }
+    }
+  })
+
   // ─── Drip handlers (one per asset) ──────────────────────────────
   const dripBody = z.object({
     address: z.string().min(3).max(80),
@@ -146,9 +198,8 @@ async function main() {
         error: 'native_filecoin_address_not_supported',
         reason:
           asset === 'usdfc'
-            ? 'USDFC is an ERC-20 token and only supports 0x addresses.'
-            : 'Native t1/t3/t0 support is on the roadmap. For now, use your delegated 0x address. SPs can derive theirs with: lotus state account-key-eth ' +
-              recipient.original,
+            ? 'USDFC is an ERC-20. Only 0x and t410f addresses are accepted.'
+            : 'Native t1 / t3 / t0 sends are on the roadmap. For now, use your 0x or t410f form.',
       })
     } else {
       return reply.code(400).send({

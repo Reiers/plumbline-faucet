@@ -3,11 +3,14 @@
     <linearGradient id="fg" x1="32" y1="4" x2="32" y2="60" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#7dd3fc"/>
       <stop offset="50%" stop-color="#38bdf8"/>
-      <stop offset="100%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0090ff"/>
     </linearGradient>
   </defs>
   <rect x="20" y="3" width="24" height="3" rx="1.5" fill="#fff" fill-opacity=".9"/>
   <rect x="31" y="6" width="2" height="22" fill="#fff" fill-opacity=".9"/>
   <path d="M32 22 C 22 32, 14 41, 14 48 C 14 56.5, 22 60.5, 32 60.5 C 42 60.5, 50 56.5, 50 48 C 50 41, 42 32, 32 22 Z" fill="url(#fg)"/>
-  <rect x="22" y="50" width="20" height="3" rx="1.5" fill="#fff" fill-opacity=".95"/>
+  <g transform="translate(32 47)">
+    <path d="M -7 -4 L 7 -4 M -8 1 L 6 1 M -3 -8 C -3 8, -1 9, 4 8"
+          stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  </g>
 </svg>

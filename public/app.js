@@ -1,12 +1,11 @@
 /* SPDX-License-Identifier: MIT
  *
- * Plumb / Calibration Faucet front-end controller.
+ * Plumbline / Calibration Faucet front-end controller.
  *
- * Two independent drip flows (tFIL, USDFC). Each form has its own
- * Turnstile widget, rendered explicitly so we never end up with two
- * widgets in the same container. A modal walks the user through
- * "Sending… → tx submitted → on-chain verified → done" with a filfox
- * link, then unlocks the close button only when the chain confirms.
+ * One Turnstile widget for the whole page, rendered above the asset
+ * panels. Both buttons stay disabled until the captcha resolves; on
+ * each successful submit the captcha resets so the next one re-locks
+ * the buttons until re-solved (Turnstile tokens are single-use).
  */
 
 const $ = (id) => document.getElementById(id)
@@ -32,12 +31,50 @@ const fmtAge = (unix) => {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86400)}d ago`
 }
-const truncAddr = (a) => `${a.slice(0,6)}…${a.slice(-4)}`
+const truncAddr = (a) => a.length > 24 ? `${a.slice(0,8)}…${a.slice(-6)}` : a
 const truncTx   = (tx) => `${tx.slice(0,10)}…${tx.slice(-6)}`
 
 let info = null
-const widgetIds = { fil: null, usdfc: null }
-const widgetTokens = { fil: '', usdfc: '' }
+let captchaToken = ''
+let captchaWidgetId = null
+let captchaSolved = false
+
+/* ── Captcha gate ─────────────────────────────────────────────────── */
+function setUnlocked(on) {
+  captchaSolved = on
+  $('captcha-section').classList.toggle('solved', on)
+  document.querySelectorAll('button.primary').forEach((b) => {
+    b.disabled = !on
+    if (on) {
+      const asset = b.classList.contains('fil-btn') ? 'tFIL' : 'USDFC'
+      b.textContent = `Send ${asset}`
+    } else {
+      b.textContent = 'Solve captcha to unlock'
+    }
+  })
+}
+
+function renderCaptcha(siteKey) {
+  if (!siteKey) {
+    // Local dev: pretend captcha is solved.
+    setUnlocked(true)
+    return
+  }
+  const draw = () => {
+    captchaWidgetId = window.turnstile.render('#captcha-mount', {
+      sitekey: siteKey,
+      callback: (t) => {
+        captchaToken = t
+        setUnlocked(true)
+      },
+      'error-callback':   () => { captchaToken = ''; setUnlocked(false) },
+      'expired-callback': () => { captchaToken = ''; setUnlocked(false) },
+      theme: 'dark',
+    })
+  }
+  if (window.turnstile) draw()
+  else window.addEventListener('load', () => setTimeout(draw, 80))
+}
 
 /* ── Modal ────────────────────────────────────────────────────────── */
 const modal = {
@@ -57,12 +94,6 @@ const modal = {
     $('md-verified').className = ''
     $('modal-close').disabled = true
   },
-  showProgress(asset, recipient, txHash) {
-    $('modal-text').textContent = 'Transaction submitted. Waiting for inclusion + on-chain balance verification…'
-    $('modal-details').hidden = false
-    $('md-tx').innerHTML = `<a href="${filfox(txHash)}" target="_blank" rel="noopener">${truncTx(txHash)}</a>`
-    $('md-filfox').innerHTML = `<a href="${filfox(txHash)}" target="_blank" rel="noopener">view ↗</a>`
-  },
   done(asset, amount, recipient, txHash, verified) {
     const ok = verified
     $('modal-icon').className = `modal-icon ${ok ? 'success' : 'error'}`
@@ -71,8 +102,9 @@ const modal = {
       : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="color:#f87171"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
     $('modal-title').textContent = ok ? 'Drip complete' : 'Drip submitted (verification mismatch)'
     $('modal-text').textContent = ok
-      ? `${fmtNum(amount)} ${asset === 'fil' ? 'tFIL' : 'USDFC'} landed in ${truncAddr(recipient)}.`
-      : 'The transaction was included but the recipient balance did not move by the expected amount. Check the tx on filfox.'
+      ? `${fmtNum(amount)} ${asset === 'fil' ? 'tFIL' : 'USDFC'} landed in the recipient's wallet.`
+      : 'Transaction was included but the recipient balance did not move by the expected amount. Check the tx on filfox.'
+    $('modal-details').hidden = false
     $('md-amount').textContent = `${fmtNum(amount)} ${asset === 'fil' ? 'tFIL' : 'USDFC'}`
     $('md-tx').innerHTML = `<a href="${filfox(txHash)}" target="_blank" rel="noopener">${truncTx(txHash)}</a>`
     $('md-filfox').innerHTML = `<a href="${filfox(txHash)}" target="_blank" rel="noopener">view ↗</a>`
@@ -88,52 +120,26 @@ const modal = {
     $('modal-details').hidden = true
     $('modal-close').disabled = false
   },
-  close() {
-    $('modal').hidden = true
-  },
+  close() { $('modal').hidden = true },
 }
-
 $('modal-close').addEventListener('click', () => modal.close())
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !$('modal-close').disabled) modal.close()
 })
 
-/* ── Turnstile ────────────────────────────────────────────────────── */
-function renderCaptchas(siteKey) {
-  if (!siteKey) return
-  const draw = () => {
-    document.querySelectorAll('.captcha-mount').forEach((el) => {
-      const asset = el.dataset.mount
-      if (widgetIds[asset] !== null) return
-      widgetIds[asset] = window.turnstile.render(el, {
-        sitekey: siteKey,
-        callback: (t)            => { widgetTokens[asset] = t },
-        'error-callback':   ()   => { widgetTokens[asset] = '' },
-        'expired-callback': ()   => { widgetTokens[asset] = '' },
-        theme: 'dark',
-      })
-    })
-  }
-  if (window.turnstile) draw()
-  else window.addEventListener('load', () => setTimeout(draw, 80))
-}
-
-/* ── Info loaders ─────────────────────────────────────────────────── */
+/* ── Loaders ──────────────────────────────────────────────────────── */
 async function loadInfo() {
   try {
     const res = await fetch('/api/info', { cache: 'no-store' })
     info = await res.json()
-    $('m-fil').textContent = fmtNum(info.filDrip)
-    $('m-usdfc').textContent = fmtNum(info.usdfcDrip)
+    $('m-fil').textContent   = `${fmtNum(info.filDrip)} per drip`
+    $('m-usdfc').textContent = `${fmtNum(info.usdfcDrip)} per drip`
     const dispShort = `${info.dispenser.slice(0,8)}…${info.dispenser.slice(-6)}`
     $('dispenser-link').innerHTML =
       `dispenser: <a href="https://calibration.filfox.info/en/address/${info.dispenser}" target="_blank" rel="noopener">${dispShort}</a>`
-    if (info.brandUrl) {
-      $('brand-link').innerHTML = `<a href="${info.brandUrl}">${info.brand}</a>`
-    } else {
-      $('brand-link').textContent = info.brand
-    }
-    renderCaptchas(info.turnstileSiteKey)
+    if (info.brandUrl) $('brand-link').innerHTML = `<a href="${info.brandUrl}">${info.brand}</a>`
+    else $('brand-link').textContent = info.brand
+    if (captchaWidgetId === null) renderCaptcha(info.turnstileSiteKey)
 
     const filWhole   = Number(BigInt(info.filBalanceWei)   / 10n**18n)
     const usdfcWhole = Number(BigInt(info.usdfcBalanceWei) / 10n**18n)
@@ -171,45 +177,40 @@ async function loadRecent() {
 }
 const refresh = () => { loadInfo(); loadRecent() }
 
-/* ── Submit handlers ──────────────────────────────────────────────── */
+/* ── Drip submit ──────────────────────────────────────────────────── */
 document.querySelectorAll('form[data-asset]').forEach((form) => {
   form.addEventListener('submit', async (e) => {
     e.preventDefault()
     const asset = form.dataset.asset
     const input = form.querySelector('input[type="text"]')
-    const btn   = form.querySelector('button[type="submit"]')
     const recipient = input.value.trim()
 
-    if (info?.turnstileSiteKey && !widgetTokens[asset]) {
-      modal.error(asset, recipient, 'Please complete the captcha first, then resubmit.')
+    if (info?.turnstileSiteKey && !captchaToken) {
       modal.open(asset, recipient)
-      $('modal-close').disabled = false
+      modal.error(asset, recipient, 'Please solve the captcha at the top of the page first, then submit.')
       return
     }
 
-    btn.disabled = true
+    document.querySelectorAll('button.primary').forEach((b) => (b.disabled = true))
     modal.open(asset, recipient)
 
     try {
       const res = await fetch(`/api/drip/${asset}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address: recipient, turnstileToken: widgetTokens[asset] }),
+        body: JSON.stringify({ address: recipient, turnstileToken: captchaToken }),
       })
       const data = await res.json()
       if (data.ok) {
-        modal.showProgress(asset, recipient, data.txHash)
-        // The server already awaited the receipt + verified balance before
-        // returning, so we can render the final state immediately.
         modal.done(asset, data.amount, recipient, data.txHash, data.verified)
         input.value = ''
         setTimeout(refresh, 800)
       } else if (data.error === 'ip_rate_limited' || data.error === 'address_rate_limited') {
         modal.error(asset, recipient, `Rate limited. Try again in <strong>${fmtSec(data.retryAfterSec)}</strong>.`)
       } else if (data.error === 'faucet_dry') {
-        modal.error(asset, recipient, 'Faucet temporarily out of funds. Refilling shortly — try again in a few minutes.')
+        modal.error(asset, recipient, 'Faucet temporarily out of funds. Refilling shortly.')
       } else if (data.error === 'captcha') {
-        modal.error(asset, recipient, `Captcha verification failed (<code>${data.reason}</code>). Please retry.`)
+        modal.error(asset, recipient, `Captcha verification failed (<code>${data.reason}</code>). Re-solve and retry.`)
       } else if (data.error === 'native_filecoin_address_not_supported') {
         modal.error(asset, recipient, data.reason)
       } else if (data.error === 'invalid_address') {
@@ -220,13 +221,50 @@ document.querySelectorAll('form[data-asset]').forEach((form) => {
     } catch (err) {
       modal.error(asset, recipient, `Network error: ${err.message}`)
     } finally {
-      btn.disabled = false
-      if (widgetIds[asset] !== null && window.turnstile) {
-        window.turnstile.reset(widgetIds[asset])
+      // Captcha tokens are single-use; reset so the next request re-locks.
+      captchaToken = ''
+      if (captchaWidgetId !== null && window.turnstile) {
+        window.turnstile.reset(captchaWidgetId)
       }
-      widgetTokens[asset] = ''
+      setUnlocked(false)
     }
   })
+})
+
+/* ── Address converter ────────────────────────────────────────────── */
+$('converter-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const input = $('conv-input')
+  const out = $('conv-output')
+  const addr = input.value.trim()
+  if (!addr) return
+  out.innerHTML = `<span class="lbl">Converting…</span>`
+  try {
+    const res = await fetch(`/api/convert?address=${encodeURIComponent(addr)}`, { cache: 'no-store' })
+    const data = await res.json()
+    if (data.ok) {
+      const lbl = addr.startsWith('0x') ? 'Filecoin' : 'Ethereum'
+      out.innerHTML = `<span class="lbl">${lbl}:</span><code>${data.output}</code><button class="copy" data-val="${data.output}" type="button">copy</button>`
+    } else if (data.error === 'native_filecoin_no_eth_form') {
+      out.innerHTML = `<span class="err">Native Filecoin addresses (t1/t3/t0) do not have a 0x form.</span>`
+    } else if (data.error === 'invalid_address') {
+      out.innerHTML = `<span class="err">Not a recognized address. Expected 0x or t410f.</span>`
+    } else {
+      out.innerHTML = `<span class="err">${data.error}${data.reason ? ` — ${data.reason}` : ''}</span>`
+    }
+  } catch (err) {
+    out.innerHTML = `<span class="err">Network error: ${err.message}</span>`
+  }
+})
+
+// Copy button delegation
+$('conv-output').addEventListener('click', (e) => {
+  if (e.target.classList?.contains('copy')) {
+    navigator.clipboard?.writeText(e.target.dataset.val)
+    const orig = e.target.textContent
+    e.target.textContent = 'copied'
+    setTimeout(() => { e.target.textContent = orig }, 1200)
+  }
 })
 
 refresh()

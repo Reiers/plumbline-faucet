@@ -22,7 +22,7 @@ import cors from '@fastify/cors'
 import rateLimitPlugin from '@fastify/rate-limit'
 import staticPlugin from '@fastify/static'
 import { z } from 'zod'
-import { parseEther, parseUnits, type Address } from 'viem'
+import { parseEther, parseUnits } from 'viem'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -168,7 +168,8 @@ async function main() {
 
   // ─── Drip handlers (one per asset) ──────────────────────────────
   const dripBody = z.object({
-    address: z.string().min(3).max(80),
+    // Native BLS (t3) addresses are 86 chars; allow some headroom.
+    address: z.string().min(3).max(120),
     turnstileToken: z.string().optional(),
   })
 
@@ -186,30 +187,27 @@ async function main() {
     }
 
     const recipient = classifyRecipient(parsed.data.address)
-    let target: Address
-    if (recipient.kind === 'eth') {
-      target = recipient.address
-    } else if (recipient.kind === 'delegated') {
-      target = recipient.address
-    } else if (recipient.kind === 'filecoin-native') {
-      // tFIL only — USDFC is ERC-20 and only accepts 0x. Even for tFIL
-      // we don't have native t1/t3 send wired yet (uses CallActor
-      // precompile, planned). Helpful error pointing at the workaround.
-      return reply.code(400).send({
-        ok: false,
-        error: 'native_filecoin_address_not_supported',
-        reason:
-          asset === 'usdfc'
-            ? 'USDFC is an ERC-20. Only 0x and t410f addresses are accepted.'
-            : 'Native t1 / t3 / t0 sends are on the roadmap. For now, use your 0x or t410f form.',
-      })
-    } else {
+    if (recipient.kind === 'invalid') {
       return reply.code(400).send({
         ok: false,
         error: 'invalid_address',
         reason: recipient.reason,
       })
     }
+    if (asset === 'usdfc' && recipient.kind === 'filecoin') {
+      return reply.code(400).send({
+        ok: false,
+        error: 'usdfc_native_unsupported',
+        reason: 'USDFC is an ERC-20. Only 0x and t410f addresses are accepted. Use the converter to get your t410f form.',
+      })
+    }
+    // For rate-limit and stats keying, use a stable string identifier.
+    // For 0x and t410f-as-0x, use the 0x form. For native filecoin
+    // (t0/t1/t3), use the original string (lower-cased).
+    const target: string =
+      recipient.kind === 'eth' || recipient.kind === 'delegated'
+        ? recipient.address.toLowerCase()
+        : recipient.original.toLowerCase()
 
     const tsResult = await verifyTurnstile(cfg, parsed.data.turnstileToken ?? '', ip)
     if (!tsResult.ok) {
@@ -261,7 +259,7 @@ async function main() {
     }
 
     try {
-      const result = asset === 'fil' ? await drip.dripFil(target) : await drip.dripUsdfc(target)
+      const result = asset === 'fil' ? await drip.dripFil(recipient) : await drip.dripUsdfc(recipient)
       store.recordDrip(ip, target, asset, now, cfg.IP_RATE_LIMIT_SEC)
       stats.recordDrip(
         now,

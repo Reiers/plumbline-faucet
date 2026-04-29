@@ -1,36 +1,29 @@
 // SPDX-License-Identifier: MIT
 //
-// Filecoin address helpers. Used to detect when a recipient is a
-// Filecoin-native address (t1, t3, t0) and fall back to a friendly
-// error pointing the user at the lotus command to derive the
-// delegated 0x equivalent. t4 (delegated EVM) addresses are converted
-// inline to their underlying 0x.
+// Filecoin address helpers.
 //
-// Future work: native t1/t3/t0 sends via the CallActor precompile
-// at 0xfe00...03. Out of scope for v1 of the public faucet.
+// classifyRecipient() returns a shape that the drip handler routes on:
+//   eth         → 0x...    (handled by viem.sendTransaction directly)
+//   delegated   → t410f... (extract embedded 0x, then handle as eth)
+//   filecoin    → t1/t3/t0 (handled by the FEVM CallActor precompile)
+//   invalid     → malformed input
+//
+// For the filecoin protocol-byte encoding, the layout is:
+//   protocol = 0  (id): leb128(actor_id)
+//   protocol = 1  (secp256k1): 20 bytes  (Blake2b-160 of pubkey)
+//   protocol = 3  (bls):       48 bytes  (BLS pubkey)
+// Final raw bytes for the precompile = [protocol_byte, ...payload].
 
 import { type Address, isAddress } from 'viem'
 
 export type RecipientShape =
   | { kind: 'eth'; address: Address }
   | { kind: 'delegated'; address: Address; original: string } // t4/f4 → 0x
-  | { kind: 'filecoin-native'; original: string; protocol: number }
+  | { kind: 'filecoin'; protocol: 0 | 1 | 3; bytes: Uint8Array; original: string }
   | { kind: 'invalid'; reason: string }
 
-const NETWORK = /^[ft]/
 const FIL_ADDR = /^[ft][0-4][a-zA-Z0-9]+$/
 
-/**
- * Decode a Filecoin address string into a categorized recipient shape.
- *
- * Quick rules:
- *   t0/f0   → numeric actor ID (filecoin-native, not yet supported)
- *   t1/f1   → secp256k1 (filecoin-native, not yet supported)
- *   t2/f2   → actor (filecoin-native, not supported)
- *   t3/f3   → bls (filecoin-native, not yet supported)
- *   t4/f4   → delegated (EVM-compatible; we extract the 0x)
- *   0x...   → Ethereum-style (handled directly)
- */
 export function classifyRecipient(input: string): RecipientShape {
   const s = input.trim()
 
@@ -39,36 +32,62 @@ export function classifyRecipient(input: string): RecipientShape {
     return { kind: 'eth', address: s as Address }
   }
 
-  if (NETWORK.test(s)) {
-    if (!FIL_ADDR.test(s)) {
-      return { kind: 'invalid', reason: 'malformed_fil_address' }
+  if (!FIL_ADDR.test(s)) {
+    return { kind: 'invalid', reason: 'unrecognized_format' }
+  }
+  const protocol = Number(s[1])
+
+  if (protocol === 0) {
+    // t0123 — actor ID encoded as decimal in the string form.
+    const idStr = s.slice(2)
+    if (!/^\d+$/.test(idStr)) return { kind: 'invalid', reason: 'malformed_t0' }
+    const id = BigInt(idStr)
+    return { kind: 'filecoin', protocol: 0, bytes: encodeT0(id), original: s }
+  }
+  if (protocol === 4) {
+    const f4 = parseDelegatedF4(s)
+    if (!f4) return { kind: 'invalid', reason: 'unsupported_delegated_namespace' }
+    return { kind: 'delegated', address: f4, original: s }
+  }
+  if (protocol === 1 || protocol === 3) {
+    const decoded = base32Decode(s.slice(2))
+    if (!decoded) return { kind: 'invalid', reason: 'malformed_base32' }
+    // payload + 4-byte checksum
+    const expectedLen = protocol === 1 ? 24 : 52
+    if (decoded.length !== expectedLen) {
+      return { kind: 'invalid', reason: `unexpected_length_${decoded.length}` }
     }
-    const protocol = Number(s[1])
-    if (protocol === 4) {
-      // f4 / t4: delegated address. Format is f4<namespace>f<base32-eth-payload+checksum>.
-      // For Calibration FEVM the namespace is the EAM actor ID (10), so we
-      // expect the prefix `t410f` or `f410f`. The remaining 36 base32 chars
-      // (encoding 20-byte payload + 4-byte checksum) decode to the 0x
-      // address embedded inside.
-      const f4 = parseDelegatedF4(s)
-      if (!f4) return { kind: 'invalid', reason: 'unsupported_delegated_namespace' }
-      return { kind: 'delegated', address: f4, original: s }
-    }
-    return { kind: 'filecoin-native', original: s, protocol }
+    const payload = decoded.slice(0, decoded.length - 4)
+    const out = new Uint8Array(payload.length + 1)
+    out[0] = protocol
+    out.set(payload, 1)
+    return { kind: 'filecoin', protocol, bytes: out, original: s }
   }
 
-  return { kind: 'invalid', reason: 'unrecognized_format' }
+  return { kind: 'invalid', reason: 'unsupported_protocol' }
 }
 
-// Base32 alphabet used by Filecoin addresses (RFC 4648, lowercase, no padding).
-const B32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
+function encodeT0(id: bigint): Uint8Array {
+  // [0x00, ...leb128(id)]
+  const out: number[] = [0x00]
+  let n = id
+  while (n >= 0x80n) {
+    out.push(Number((n & 0x7fn) | 0x80n))
+    n >>= 7n
+  }
+  out.push(Number(n))
+  return Uint8Array.from(out)
+}
+
+// Base32 alphabet used by Filecoin (RFC 4648, lowercase, no padding).
+const B32 = 'abcdefghijklmnopqrstuvwxyz234567'
 
 function base32Decode(input: string): Uint8Array | null {
   const out: number[] = []
   let buffer = 0
   let bitsLeft = 0
   for (const ch of input.toLowerCase()) {
-    const idx = B32_ALPHABET.indexOf(ch)
+    const idx = B32.indexOf(ch)
     if (idx < 0) return null
     buffer = (buffer << 5) | idx
     bitsLeft += 5
@@ -81,18 +100,12 @@ function base32Decode(input: string): Uint8Array | null {
 }
 
 function parseDelegatedF4(s: string): Address | null {
-  // Format: <network><protocol=4><namespaceVarint><sep=f><base32(payload + checksum4)>
-  // Examples on Calibration: t410f<base32 of 24 bytes>
   const m = s.match(/^[ft]4([0-9]+)f([a-z2-7]+)$/i)
   if (!m) return null
   const namespace = Number(m[1])
-  if (namespace !== 10) {
-    // Only EAM (Ethereum Account Manager, actor id 10) is meaningful here.
-    return null
-  }
+  if (namespace !== 10) return null
   const decoded = base32Decode(m[2]!)
   if (!decoded || decoded.length !== 24) return null
   const payload = decoded.slice(0, 20)
-  const hex = '0x' + Array.from(payload, (b) => b.toString(16).padStart(2, '0')).join('')
-  return hex as Address
+  return ('0x' + Array.from(payload, (b) => b.toString(16).padStart(2, '0')).join('')) as Address
 }

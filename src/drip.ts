@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 //
-// Drip executor: sends tFIL and USDFC to a recipient on Filecoin
-// Calibration. Each call is sequenced (not parallel) to avoid nonce
-// races; tFIL is sent first because if it fails we don't bother with
-// the USDFC mint at all.
+// Drip executor: sends tFIL OR USDFC to a recipient on Filecoin
+// Calibration. Each asset is its own method so callers can drip them
+// independently (the public faucet UI splits them across two panels).
+//
+// After every send we verify on-chain that the recipient's balance
+// actually moved by the expected amount. Belt-and-suspenders against
+// RPC inconsistencies, mempool reorgs, or partial-include cases.
 
 import {
   type Address,
@@ -23,10 +26,12 @@ import { filecoinCalibration } from 'viem/chains'
 import type { FaucetConfig } from './config.js'
 
 export interface DripResult {
-  filTxHash: `0x${string}`
-  usdfcTxHash: `0x${string}`
-  filAmount: string
-  usdfcAmount: string
+  txHash: `0x${string}`
+  amount: string
+  asset: 'fil' | 'usdfc'
+  recipientBalanceBefore: string
+  recipientBalanceAfter: string
+  verified: boolean
 }
 
 export interface DispenserState {
@@ -35,7 +40,7 @@ export interface DispenserState {
   usdfcBalance: bigint
 }
 
-const USDFC_DECIMALS = 18 // USDFC on Calibration is 18 decimals
+const USDFC_DECIMALS = 18
 
 export class Drip {
   private cfg: FaucetConfig
@@ -75,56 +80,75 @@ export class Drip {
     return { address: this.dispenser, filBalance, usdfcBalance }
   }
 
-  /**
-   * Pre-flight: verify the dispenser has enough headroom to honor a drip
-   * AND keep its configured reserves. Returns null if OK, otherwise a
-   * human-readable reason string.
-   */
-  async checkReserves(): Promise<string | null> {
+  async checkReserves(asset: 'fil' | 'usdfc'): Promise<string | null> {
     const state = await this.state()
-    const minFil = parseEther(this.cfg.MIN_RESERVE_FIL)
-    const minUsdfc = parseUnits(this.cfg.MIN_RESERVE_USDFC, USDFC_DECIMALS)
-    const dripFil = parseEther(this.cfg.FIL_DRIP)
-    const dripUsdfc = parseUnits(this.cfg.USDFC_DRIP, USDFC_DECIMALS)
-
-    if (state.filBalance < minFil + dripFil) {
-      return `dispenser tFIL low: ${formatEther(state.filBalance)} (reserve ${this.cfg.MIN_RESERVE_FIL} + drip ${this.cfg.FIL_DRIP})`
-    }
-    if (state.usdfcBalance < minUsdfc + dripUsdfc) {
-      return `dispenser USDFC low: ${formatUnits(state.usdfcBalance, USDFC_DECIMALS)} (reserve ${this.cfg.MIN_RESERVE_USDFC} + drip ${this.cfg.USDFC_DRIP})`
+    if (asset === 'fil') {
+      const minFil = parseEther(this.cfg.MIN_RESERVE_FIL)
+      const dripFil = parseEther(this.cfg.FIL_DRIP)
+      if (state.filBalance < minFil + dripFil) {
+        return `dispenser tFIL low: ${formatEther(state.filBalance)} (reserve ${this.cfg.MIN_RESERVE_FIL} + drip ${this.cfg.FIL_DRIP})`
+      }
+    } else {
+      const minUsdfc = parseUnits(this.cfg.MIN_RESERVE_USDFC, USDFC_DECIMALS)
+      const dripUsdfc = parseUnits(this.cfg.USDFC_DRIP, USDFC_DECIMALS)
+      if (state.usdfcBalance < minUsdfc + dripUsdfc) {
+        return `dispenser USDFC low: ${formatUnits(state.usdfcBalance, USDFC_DECIMALS)} (reserve ${this.cfg.MIN_RESERVE_USDFC} + drip ${this.cfg.USDFC_DRIP})`
+      }
     }
     return null
   }
 
-  async drip(recipient: Address): Promise<DripResult> {
-    const filAmount = parseEther(this.cfg.FIL_DRIP)
-    const usdfcAmount = parseUnits(this.cfg.USDFC_DRIP, USDFC_DECIMALS)
-
-    // 1. tFIL transfer (native)
-    const filTxHash = await this.wallet.sendTransaction({
+  async dripFil(recipient: Address): Promise<DripResult> {
+    const amount = parseEther(this.cfg.FIL_DRIP)
+    const before = await this.pub.getBalance({ address: recipient })
+    const txHash = await this.wallet.sendTransaction({
       to: recipient,
-      value: filAmount,
+      value: amount,
       account: this.wallet.account!,
       chain: filecoinCalibration,
     })
-    await this.pub.waitForTransactionReceipt({ hash: filTxHash })
+    await this.pub.waitForTransactionReceipt({ hash: txHash })
+    const after = await this.pub.getBalance({ address: recipient })
+    return {
+      txHash,
+      amount: this.cfg.FIL_DRIP,
+      asset: 'fil',
+      recipientBalanceBefore: before.toString(),
+      recipientBalanceAfter: after.toString(),
+      verified: after - before >= amount,
+    }
+  }
 
-    // 2. USDFC ERC-20 transfer
-    const usdfcTxHash = await this.wallet.writeContract({
+  async dripUsdfc(recipient: Address): Promise<DripResult> {
+    const amount = parseUnits(this.cfg.USDFC_DRIP, USDFC_DECIMALS)
+    const before = (await this.pub.readContract({
+      address: this.cfg.USDFC_ADDRESS,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [recipient],
+    })) as bigint
+    const txHash = await this.wallet.writeContract({
       address: this.cfg.USDFC_ADDRESS,
       abi: erc20Abi,
       functionName: 'transfer',
-      args: [recipient, usdfcAmount],
+      args: [recipient, amount],
       account: this.wallet.account!,
       chain: filecoinCalibration,
     })
-    await this.pub.waitForTransactionReceipt({ hash: usdfcTxHash })
-
+    await this.pub.waitForTransactionReceipt({ hash: txHash })
+    const after = (await this.pub.readContract({
+      address: this.cfg.USDFC_ADDRESS,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [recipient],
+    })) as bigint
     return {
-      filTxHash,
-      usdfcTxHash,
-      filAmount: this.cfg.FIL_DRIP,
-      usdfcAmount: this.cfg.USDFC_DRIP,
+      txHash,
+      amount: this.cfg.USDFC_DRIP,
+      asset: 'usdfc',
+      recipientBalanceBefore: before.toString(),
+      recipientBalanceAfter: after.toString(),
+      verified: after - before >= amount,
     }
   }
 }

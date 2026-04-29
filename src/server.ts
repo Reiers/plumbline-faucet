@@ -1,25 +1,28 @@
 // SPDX-License-Identifier: MIT
 //
-// calibration-faucet HTTP server.
+// Plumb (Calibration Faucet) HTTP server.
+//
+// Two-panel split: tFIL and USDFC are independent drips with their own
+// rate limit per (asset, ip) and per (asset, address). A user can drip
+// just tFIL, just USDFC, or both — but cannot repeat either inside the
+// 24h cooldown window.
 //
 // Routes:
-//   GET  /                  static landing page (serves public/index.html)
-//   GET  /healthz           liveness probe
-//   GET  /api/info          public faucet metadata
+//   GET  /                  static landing page (public/index.html)
+//   GET  /status            static status page  (public/status.html)
+//   GET  /healthz           liveness + dispenser balances
+//   GET  /api/info          public faucet metadata + live balances
 //   GET  /api/stats         lifetime + 24h aggregate counters
 //   GET  /api/recent        last N drips (address + tx hashes only)
-//   POST /api/drip          { address, turnstileToken } → drip + record
-//
-// Bot protection: Cloudflare Turnstile on /api/drip when configured.
-// Rate limiting: per-IP and per-address (24h default), plus a global
-// per-IP burst at the Fastify layer.
+//   POST /api/drip/fil      { address, turnstileToken } → tFIL drip
+//   POST /api/drip/usdfc    { address, turnstileToken } → USDFC drip
 
-import Fastify from 'fastify'
+import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify'
 import cors from '@fastify/cors'
 import rateLimitPlugin from '@fastify/rate-limit'
 import staticPlugin from '@fastify/static'
 import { z } from 'zod'
-import { isAddress, type Address, parseEther, parseUnits } from 'viem'
+import { parseEther, parseUnits, type Address } from 'viem'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -28,6 +31,7 @@ import { RateLimitStore } from './rate-limit-store.js'
 import { StatsStore } from './stats-store.js'
 import { Drip } from './drip.js'
 import { verifyTurnstile } from './turnstile.js'
+import { classifyRecipient } from './fil-address.js'
 
 const USDFC_DECIMALS = 18
 
@@ -52,13 +56,24 @@ async function main() {
     keyGenerator: (req) => req.ip,
   })
 
+  const publicDir = path.join(__dirname, '..', 'public')
   await app.register(staticPlugin, {
-    root: path.join(__dirname, '..', 'public'),
+    root: publicDir,
     prefix: '/',
     decorateReply: false,
   })
 
-  // ─── Health ─────────────────────────────────────────────────────
+  // Pretty URL for the status page: /status -> public/status.html
+  const statusHtml = await import('node:fs').then((fs) =>
+    fs.promises.readFile(path.join(publicDir, 'status.html'), 'utf8'),
+  )
+  app.get('/status', async (_req, reply) => {
+    reply.header('content-type', 'text/html; charset=utf-8')
+    return statusHtml
+  })
+
+
+  // ─── Liveness ────────────────────────────────────────────────────
   app.get('/healthz', async () => {
     const state = await drip.state()
     return {
@@ -69,7 +84,7 @@ async function main() {
     }
   })
 
-  // ─── Info (rendered by the UI) ──────────────────────────────────
+  // ─── Public metadata + live balances (rendered by the UI) ───────
   app.get('/api/info', async () => {
     const state = await drip.state()
     return {
@@ -83,7 +98,6 @@ async function main() {
       usdfcAddress: cfg.USDFC_ADDRESS,
       rpcUrl: cfg.RPC_URL,
       dispenser: state.address,
-      // Live balances exposed for the UI's status panel
       filBalanceWei: state.filBalance.toString(),
       usdfcBalanceWei: state.usdfcBalance.toString(),
       minReserveFil: cfg.MIN_RESERVE_FIL,
@@ -91,7 +105,6 @@ async function main() {
     }
   })
 
-  // ─── Stats ──────────────────────────────────────────────────────
   app.get('/api/stats', async () => stats.read())
 
   app.get('/api/recent', async (req) => {
@@ -99,29 +112,59 @@ async function main() {
     return { drips: stats.recent(limit) }
   })
 
-  // ─── POST /api/drip ─────────────────────────────────────────────
+  // ─── Drip handlers (one per asset) ──────────────────────────────
   const dripBody = z.object({
-    address: z.string().refine((s) => isAddress(s), { message: 'invalid_address' }),
+    address: z.string().min(3).max(80),
     turnstileToken: z.string().optional(),
   })
 
-  app.post('/api/drip', async (req, reply) => {
+  type Asset = 'fil' | 'usdfc'
+
+  const handleDrip = async (
+    asset: Asset,
+    req: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
     const ip = req.ip
     const parsed = dripBody.safeParse(req.body)
     if (!parsed.success) {
       return reply.code(400).send({ ok: false, error: 'bad_request' })
     }
-    const recipient = parsed.data.address as Address
+
+    const recipient = classifyRecipient(parsed.data.address)
+    let target: Address
+    if (recipient.kind === 'eth') {
+      target = recipient.address
+    } else if (recipient.kind === 'delegated') {
+      target = recipient.address
+    } else if (recipient.kind === 'filecoin-native') {
+      // tFIL only — USDFC is ERC-20 and only accepts 0x. Even for tFIL
+      // we don't have native t1/t3 send wired yet (uses CallActor
+      // precompile, planned). Helpful error pointing at the workaround.
+      return reply.code(400).send({
+        ok: false,
+        error: 'native_filecoin_address_not_supported',
+        reason:
+          asset === 'usdfc'
+            ? 'USDFC is an ERC-20 token and only supports 0x addresses.'
+            : 'Native t1/t3/t0 support is on the roadmap. For now, use your delegated 0x address. SPs can derive theirs with: lotus state account-key-eth ' +
+              recipient.original,
+      })
+    } else {
+      return reply.code(400).send({
+        ok: false,
+        error: 'invalid_address',
+        reason: recipient.reason,
+      })
+    }
 
     const tsResult = await verifyTurnstile(cfg, parsed.data.turnstileToken ?? '', ip)
     if (!tsResult.ok) {
-      return reply
-        .code(400)
-        .send({ ok: false, error: 'captcha', reason: tsResult.reason })
+      return reply.code(400).send({ ok: false, error: 'captcha', reason: tsResult.reason })
     }
 
     const now = Math.floor(Date.now() / 1000)
-    const lastIp = store.lastDripForIp(ip)
+    const lastIp = store.lastDripForIp(ip, asset)
     if (lastIp && now - lastIp < cfg.IP_RATE_LIMIT_SEC) {
       return reply.code(429).send({
         ok: false,
@@ -129,7 +172,7 @@ async function main() {
         retryAfterSec: cfg.IP_RATE_LIMIT_SEC - (now - lastIp),
       })
     }
-    const lastAddr = store.lastDripForAddress(recipient)
+    const lastAddr = store.lastDripForAddress(target, asset)
     if (lastAddr && now - lastAddr < cfg.ADDRESS_RATE_LIMIT_SEC) {
       return reply.code(429).send({
         ok: false,
@@ -138,42 +181,43 @@ async function main() {
       })
     }
 
-    const reserveProblem = await drip.checkReserves()
+    const reserveProblem = await drip.checkReserves(asset)
     if (reserveProblem) {
-      app.log.warn({ reserveProblem }, 'faucet dry')
-      return reply
-        .code(503)
-        .send({ ok: false, error: 'faucet_dry', reason: reserveProblem })
+      app.log.warn({ reserveProblem, asset }, 'faucet dry')
+      return reply.code(503).send({ ok: false, error: 'faucet_dry', reason: reserveProblem })
     }
 
     try {
-      const result = await drip.drip(recipient)
-      store.recordDrip(ip, recipient, now)
+      const result = asset === 'fil' ? await drip.dripFil(target) : await drip.dripUsdfc(target)
+      store.recordDrip(ip, target, asset, now)
       stats.recordDrip(
         now,
-        recipient,
-        result.filTxHash,
-        result.usdfcTxHash,
-        parseEther(cfg.FIL_DRIP),
-        parseUnits(cfg.USDFC_DRIP, USDFC_DECIMALS),
+        target,
+        asset,
+        result.txHash,
+        asset === 'fil'
+          ? parseEther(cfg.FIL_DRIP)
+          : parseUnits(cfg.USDFC_DRIP, USDFC_DECIMALS),
       )
       app.log.info(
         {
-          recipient,
+          asset,
+          recipient: target,
           ip,
-          filTxHash: result.filTxHash,
-          usdfcTxHash: result.usdfcTxHash,
+          txHash: result.txHash,
+          verified: result.verified,
         },
         'drip ok',
       )
       return { ok: true, ...result }
     } catch (err) {
-      app.log.error({ err, recipient, ip }, 'drip failed')
-      return reply
-        .code(500)
-        .send({ ok: false, error: 'drip_failed', reason: String(err) })
+      app.log.error({ err, recipient: target, ip, asset }, 'drip failed')
+      return reply.code(500).send({ ok: false, error: 'drip_failed', reason: String(err) })
     }
-  })
+  }
+
+  app.post('/api/drip/fil', async (req, reply) => handleDrip('fil', req, reply))
+  app.post('/api/drip/usdfc', async (req, reply) => handleDrip('usdfc', req, reply))
 
   if (!cfg.TURNSTILE_SECRET) {
     app.log.warn(

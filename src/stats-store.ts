@@ -1,34 +1,40 @@
 // SPDX-License-Identifier: MIT
 //
-// Aggregate stats + recent-drip feed, persisted in the same SQLite
-// database that backs rate limiting.
+// Aggregate stats + recent-drip feed, persisted alongside rate limits.
+// Per-asset stats so the status page can show separate counters for
+// tFIL and USDFC.
 //
 // Schema:
-//   stats(name TEXT PK, value TEXT)
-//     - total_drips_count        u64
-//     - total_fil_distributed    string (parseable as bigint, wei)
-//     - total_usdfc_distributed  string (parseable as bigint, wei)
-//   recent_drips(unix INTEGER, address TEXT, fil_tx TEXT, usdfc_tx TEXT)
-//     bounded to the last 50 rows; older entries are pruned on insert.
+//   stats (name TEXT PK, value TEXT)
+//     - total_drips_count_fil    u64
+//     - total_drips_count_usdfc  u64
+//     - total_fil_distributed    bigint string (wei)
+//     - total_usdfc_distributed  bigint string (wei)
+//   recent_drips (unix INTEGER, address TEXT, asset TEXT, tx TEXT)
+//     bounded to the last 50 rows; pruned on insert.
 //
-// We deliberately do NOT persist IPs in this table; the public
-// /api/recent endpoint exposes recent rows verbatim and we don't want
-// to leak per-IP attribution.
+// IPs are deliberately NOT stored in recent_drips; the public
+// /api/recent endpoint exposes rows verbatim and per-IP attribution
+// would leak.
 
 import type Database from 'better-sqlite3'
 
+export type Asset = 'fil' | 'usdfc'
+
 export interface Stats {
-  totalDrips: number
+  totalDripsFil: number
+  totalDripsUsdfc: number
   totalFilWei: string
   totalUsdfcWei: string
-  dripsToday: number
+  filDripsToday: number
+  usdfcDripsToday: number
 }
 
 export interface RecentDrip {
   unix: number
   address: string
-  filTx: string
-  usdfcTx: string
+  asset: Asset
+  tx: string
 }
 
 export class StatsStore {
@@ -44,58 +50,76 @@ export class StatsStore {
       CREATE TABLE IF NOT EXISTS recent_drips (
         unix INTEGER NOT NULL,
         address TEXT NOT NULL,
-        fil_tx TEXT NOT NULL,
-        usdfc_tx TEXT NOT NULL
+        asset TEXT NOT NULL,
+        tx TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS recent_drips_unix_idx ON recent_drips(unix DESC);
     `)
+    this.migrateLegacyRecentDrips()
+  }
+
+  // v1 stored a single recent_drips row per drip with separate fil_tx and
+  // usdfc_tx columns. v2 splits them into two rows tagged by asset.
+  private migrateLegacyRecentDrips(): void {
+    const cols = this.db
+      .prepare(`PRAGMA table_info(recent_drips)`)
+      .all() as { name: string }[]
+    const hasLegacy = cols.some((c) => c.name === 'fil_tx') && cols.some((c) => c.name === 'usdfc_tx')
+    if (!hasLegacy) return
+    const tx = this.db.transaction(() => {
+      this.db.exec(`ALTER TABLE recent_drips RENAME TO recent_drips_v1`)
+      this.db.exec(`
+        CREATE TABLE recent_drips (
+          unix INTEGER NOT NULL,
+          address TEXT NOT NULL,
+          asset TEXT NOT NULL,
+          tx TEXT NOT NULL
+        );
+        CREATE INDEX recent_drips_unix_idx ON recent_drips(unix DESC);
+        INSERT INTO recent_drips (unix, address, asset, tx)
+          SELECT unix, address, 'fil',   fil_tx   FROM recent_drips_v1
+          UNION ALL
+          SELECT unix, address, 'usdfc', usdfc_tx FROM recent_drips_v1;
+        DROP TABLE recent_drips_v1;
+      `)
+    })
+    tx()
   }
 
   recordDrip(
     unix: number,
     address: string,
-    filTx: string,
-    usdfcTx: string,
-    filWei: bigint,
-    usdfcWei: bigint,
+    asset: Asset,
+    tx: string,
+    weiAmount: bigint,
   ): void {
-    const tx = this.db.transaction(() => {
-      // Bump counters
-      const bumpInt = this.db.prepare(`
-        INSERT INTO stats (name, value) VALUES (?, ?)
-        ON CONFLICT(name) DO UPDATE SET
-          value = CAST((CAST(value AS INTEGER) + CAST(excluded.value AS INTEGER)) AS TEXT)
-      `)
-      const bumpBig = this.db.prepare(`
-        INSERT INTO stats (name, value) VALUES (?, ?)
-        ON CONFLICT(name) DO UPDATE SET value = ?
-      `)
-      // For bigints, read-modify-write because SQLite int math is 64-bit and
-      // wei can overflow.
-      const readBig = (k: string): bigint => {
-        const row = this.db
-          .prepare('SELECT value FROM stats WHERE name = ?')
-          .get(k) as { value: string } | undefined
-        return row ? BigInt(row.value) : 0n
-      }
-
-      bumpInt.run('total_drips_count', '1')
-      const newFil = readBig('total_fil_distributed') + filWei
-      bumpBig.run('total_fil_distributed', newFil.toString(), newFil.toString())
-      const newUsdfc = readBig('total_usdfc_distributed') + usdfcWei
-      bumpBig.run(
-        'total_usdfc_distributed',
-        newUsdfc.toString(),
-        newUsdfc.toString(),
-      )
+    const txn = this.db.transaction(() => {
+      const countKey = asset === 'fil' ? 'total_drips_count_fil' : 'total_drips_count_usdfc'
+      const totalKey = asset === 'fil' ? 'total_fil_distributed' : 'total_usdfc_distributed'
 
       this.db
-        .prepare(
-          'INSERT INTO recent_drips (unix, address, fil_tx, usdfc_tx) VALUES (?, ?, ?, ?)',
-        )
-        .run(unix, address.toLowerCase(), filTx, usdfcTx)
+        .prepare(`
+          INSERT INTO stats (name, value) VALUES (?, '1')
+          ON CONFLICT(name) DO UPDATE SET
+            value = CAST((CAST(value AS INTEGER) + 1) AS TEXT)
+        `)
+        .run(countKey)
 
-      // Cap to the most recent 50.
+      const cur = this.db
+        .prepare('SELECT value FROM stats WHERE name = ?')
+        .get(totalKey) as { value: string } | undefined
+      const next = (cur ? BigInt(cur.value) : 0n) + weiAmount
+      this.db
+        .prepare(`
+          INSERT INTO stats (name, value) VALUES (?, ?)
+          ON CONFLICT(name) DO UPDATE SET value = excluded.value
+        `)
+        .run(totalKey, next.toString())
+
+      this.db
+        .prepare('INSERT INTO recent_drips (unix, address, asset, tx) VALUES (?, ?, ?, ?)')
+        .run(unix, address.toLowerCase(), asset, tx)
+
       this.db.exec(`
         DELETE FROM recent_drips
         WHERE rowid NOT IN (
@@ -103,7 +127,7 @@ export class StatsStore {
         )
       `)
     })
-    tx()
+    txn()
   }
 
   read(): Stats {
@@ -114,25 +138,31 @@ export class StatsStore {
       return row?.value ?? fallback
     }
     const dayAgo = Math.floor(Date.now() / 1000) - 86400
-    const dripsToday = (
+    const filToday = (
       this.db
-        .prepare('SELECT COUNT(*) AS n FROM recent_drips WHERE unix >= ?')
+        .prepare("SELECT COUNT(*) AS n FROM recent_drips WHERE unix >= ? AND asset = 'fil'")
+        .get(dayAgo) as { n: number }
+    ).n
+    const usdfcToday = (
+      this.db
+        .prepare("SELECT COUNT(*) AS n FROM recent_drips WHERE unix >= ? AND asset = 'usdfc'")
         .get(dayAgo) as { n: number }
     ).n
     return {
-      totalDrips: Number(get('total_drips_count', '0')),
+      totalDripsFil: Number(get('total_drips_count_fil', '0')),
+      totalDripsUsdfc: Number(get('total_drips_count_usdfc', '0')),
       totalFilWei: get('total_fil_distributed', '0'),
       totalUsdfcWei: get('total_usdfc_distributed', '0'),
-      dripsToday,
+      filDripsToday: filToday,
+      usdfcDripsToday: usdfcToday,
     }
   }
 
   recent(limit = 10): RecentDrip[] {
-    const rows = this.db
+    return this.db
       .prepare(
-        'SELECT unix, address, fil_tx AS filTx, usdfc_tx AS usdfcTx FROM recent_drips ORDER BY unix DESC LIMIT ?',
+        'SELECT unix, address, asset, tx FROM recent_drips ORDER BY unix DESC LIMIT ?',
       )
       .all(limit) as RecentDrip[]
-    return rows
   }
 }

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Status — Plumb</title>
+    <meta name="description" content="Live status for the Plumb Calibration faucet — dispenser balances, drip volume, and recent activity." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://rsms.me" />
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <nav class="nav">
+      <a href="/" class="logo">
+        <svg viewBox="0 0 64 64" width="28" height="28" fill="none" aria-hidden="true">
+          <defs><linearGradient id="navg2" x1="32" y1="4" x2="32" y2="60" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#7dd3fc"/><stop offset="50%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#2563eb"/>
+          </linearGradient></defs>
+          <rect x="20" y="3" width="24" height="3" rx="1.5" fill="#fff" fill-opacity=".9"/>
+          <rect x="31" y="6" width="2" height="22" fill="#fff" fill-opacity=".9"/>
+          <path d="M32 22 C 22 32, 14 41, 14 48 C 14 56.5, 22 60.5, 32 60.5 C 42 60.5, 50 56.5, 50 48 C 50 41, 42 32, 32 22 Z" fill="url(#navg2)"/>
+          <rect x="22" y="50" width="20" height="3" rx="1.5" fill="#fff" fill-opacity=".95"/>
+        </svg>
+        <span>Plumb</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Faucet</a>
+        <a href="/status" aria-current="page">Status</a>
+        <a href="/#contact">Contact</a>
+        <a href="https://github.com/Reiers/calibration-faucet" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </nav>
+
+    <main>
+      <section class="hero" style="padding: 32px 0 24px;">
+        <div class="pill" id="health-pill">checking…</div>
+        <h1 style="font-size: clamp(28px, 4vw, 40px);">Faucet status</h1>
+        <p>Live counters for the Plumb Calibration faucet. Auto-refreshes every 15 seconds.</p>
+      </section>
+
+      <h2 class="card-title" style="margin: 32px 0 0;">Dispenser reserves</h2>
+      <div class="status-grid">
+        <div class="stat-box"><div class="v" id="s-fil-bal">…</div><div class="l">tFIL on hand</div></div>
+        <div class="stat-box"><div class="v" id="s-fil-left">…</div><div class="l">tFIL drips of headroom</div></div>
+        <div class="stat-box"><div class="v" id="s-usdfc-bal">…</div><div class="l">USDFC on hand</div></div>
+        <div class="stat-box"><div class="v" id="s-usdfc-left">…</div><div class="l">USDFC drips of headroom</div></div>
+      </div>
+
+      <h2 class="card-title" style="margin: 32px 0 0;">Activity</h2>
+      <div class="status-grid">
+        <div class="stat-box"><div class="v" id="s-fil-today">…</div><div class="l">tFIL drips · last 24h</div></div>
+        <div class="stat-box"><div class="v" id="s-usdfc-today">…</div><div class="l">USDFC drips · last 24h</div></div>
+        <div class="stat-box"><div class="v" id="s-fil-total">…</div><div class="l">tFIL drips · all time</div></div>
+        <div class="stat-box"><div class="v" id="s-usdfc-total">…</div><div class="l">USDFC drips · all time</div></div>
+      </div>
+
+      <h2 class="card-title" style="margin: 32px 0 0;">Distributed (lifetime)</h2>
+      <div class="status-grid">
+        <div class="stat-box"><div class="v" id="s-fil-dist">…</div><div class="l">tFIL handed out</div></div>
+        <div class="stat-box"><div class="v" id="s-usdfc-dist">…</div><div class="l">USDFC handed out</div></div>
+      </div>
+
+      <h2 class="card-title" style="margin: 32px 0 0;">Configuration</h2>
+      <div class="status-grid">
+        <div class="stat-box"><div class="v" id="s-cfg-drip">…</div><div class="l">drip per request</div></div>
+        <div class="stat-box"><div class="v" id="s-cfg-cool">…</div><div class="l">cooldown per address &amp; IP</div></div>
+        <div class="stat-box"><div class="v" id="s-cfg-reserve">…</div><div class="l">refusal floor</div></div>
+        <div class="stat-box"><div class="v" id="s-cfg-rpc">…</div><div class="l">Calibration RPC</div></div>
+      </div>
+
+      <section class="card feed" style="margin-top: 32px;">
+        <h2 class="card-title">Recent drips (50)</h2>
+        <table>
+          <thead><tr><th>When</th><th>Asset</th><th>Recipient</th><th>Tx</th></tr></thead>
+          <tbody id="recent-body"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+        </table>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-row">
+        <div class="footer-brand">
+          <span id="brand-link">Plumb</span>
+          ·
+          <a href="https://github.com/Reiers/calibration-faucet" target="_blank" rel="noopener">source</a>
+          ·
+          <a href="/">faucet</a>
+        </div>
+        <div class="footer-meta">
+          <span>TSE Reiersen · Org. 929 074 912</span>
+          <span class="footer-dispenser" id="dispenser-link">dispenser: …</span>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      const $ = (id) => document.getElementById(id)
+      const fmtNum = (n) => {
+        const num = Number(n)
+        if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B'
+        if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M'
+        if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K'
+        return num.toLocaleString()
+      }
+      const fmtSec = (s) => {
+        if (s >= 86400) return `${Math.round(s / 86400)}h`
+        if (s >= 3600)  return `${Math.round(s / 3600)}h`
+        if (s >= 60)    return `${Math.round(s / 60)}m`
+        return `${s}s`
+      }
+      const fmtAge = (unix) => {
+        const s = Math.floor(Date.now() / 1000) - unix
+        if (s < 60) return `${s}s ago`
+        if (s < 3600) return `${Math.floor(s / 60)}m ago`
+        if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+        return `${Math.floor(s / 86400)}d ago`
+      }
+      const truncAddr = (a) => `${a.slice(0,6)}…${a.slice(-4)}`
+      const truncTx   = (t) => `${t.slice(0,10)}…${t.slice(-6)}`
+      const filfox = (tx) => `https://calibration.filfox.info/en/message/${tx}?t=1`
+
+      async function refresh() {
+        const [info, stats, recent, health] = await Promise.all([
+          fetch('/api/info',   { cache: 'no-store' }).then(r => r.json()),
+          fetch('/api/stats',  { cache: 'no-store' }).then(r => r.json()),
+          fetch('/api/recent?limit=50', { cache: 'no-store' }).then(r => r.json()),
+          fetch('/healthz',    { cache: 'no-store' }).then(r => r.json()).catch(() => ({ ok: false })),
+        ])
+
+        // Health pill
+        const pill = $('health-pill')
+        if (health.ok) {
+          pill.textContent = 'live · operational'
+          pill.style.color = ''
+        } else {
+          pill.textContent = 'degraded'
+          pill.style.color = '#f87171'
+        }
+
+        // Reserves
+        const filBal = Number(BigInt(info.filBalanceWei) / 10n**18n)
+        const usdBal = Number(BigInt(info.usdfcBalanceWei) / 10n**18n)
+        $('s-fil-bal').innerHTML   = `${fmtNum(filBal)} <small>tFIL</small>`
+        $('s-usdfc-bal').innerHTML = `${fmtNum(usdBal)} <small>USDFC</small>`
+        $('s-fil-left').innerHTML  = Math.max(0, Math.floor((filBal - Number(info.minReserveFil))   / Number(info.filDrip))) + ` <small>drips</small>`
+        $('s-usdfc-left').innerHTML = Math.max(0, Math.floor((usdBal - Number(info.minReserveUsdfc)) / Number(info.usdfcDrip))) + ` <small>drips</small>`
+
+        // Activity
+        $('s-fil-today').innerHTML   = stats.filDripsToday
+        $('s-usdfc-today').innerHTML = stats.usdfcDripsToday
+        $('s-fil-total').innerHTML   = stats.totalDripsFil
+        $('s-usdfc-total').innerHTML = stats.totalDripsUsdfc
+
+        // Distributed
+        const filDist = Number(BigInt(stats.totalFilWei) / 10n**18n)
+        const usdDist = Number(BigInt(stats.totalUsdfcWei) / 10n**18n)
+        $('s-fil-dist').innerHTML   = `${fmtNum(filDist)} <small>tFIL</small>`
+        $('s-usdfc-dist').innerHTML = `${fmtNum(usdDist)} <small>USDFC</small>`
+
+        // Config
+        $('s-cfg-drip').innerHTML   = `${info.filDrip} <small>tFIL</small> &nbsp;+&nbsp; ${info.usdfcDrip} <small>USDFC</small>`
+        $('s-cfg-cool').innerHTML   = `${fmtSec(info.addressRateLimitSec)} <small>per asset</small>`
+        $('s-cfg-reserve').innerHTML = `${info.minReserveFil} <small>tFIL</small> &nbsp;+&nbsp; ${info.minReserveUsdfc} <small>USDFC</small>`
+        $('s-cfg-rpc').innerHTML    = info.rpcUrl.replace(/^https?:\/\//, '').replace('/rpc/v1','').replace('api.','')
+        $('s-cfg-rpc').style.fontSize = '14px'
+
+        // Footer
+        const dispShort = `${info.dispenser.slice(0,8)}…${info.dispenser.slice(-6)}`
+        $('dispenser-link').innerHTML =
+          `dispenser: <a href="https://calibration.filfox.info/en/address/${info.dispenser}" target="_blank" rel="noopener">${dispShort}</a>`
+        if (info.brandUrl) $('brand-link').innerHTML = `<a href="${info.brandUrl}">${info.brand}</a>`
+
+        // Recent
+        const tbody = $('recent-body')
+        if (!recent.drips || recent.drips.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4" class="empty">No drips yet</td></tr>`
+        } else {
+          tbody.innerHTML = recent.drips.map((d) => `
+            <tr>
+              <td class="muted">${fmtAge(d.unix)}</td>
+              <td><span class="asset-tag ${d.asset}">${d.asset === 'fil' ? 'tFIL' : 'USDFC'}</span></td>
+              <td><a href="https://calibration.filfox.info/en/address/${d.address}" target="_blank" rel="noopener">${truncAddr(d.address)}</a></td>
+              <td><a href="${filfox(d.tx)}" target="_blank" rel="noopener">${truncTx(d.tx)}</a></td>
+            </tr>
+          `).join('')
+        }
+      }
+      refresh()
+      setInterval(refresh, 15000)
+    </script>
+  </body>
+</html>

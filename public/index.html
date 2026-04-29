@@ -3,312 +3,38 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Calibration Faucet — tFIL + USDFC</title>
-    <meta name="description" content="Public Filecoin Calibration testnet faucet. Drips tFIL and USDFC for development and contract testing." />
-    <meta property="og:title" content="Calibration Faucet" />
-    <meta property="og:description" content="tFIL + USDFC drip on Filecoin Calibration testnet." />
+    <title>Plumb — Filecoin Calibration Faucet</title>
+    <meta name="description" content="Public Filecoin Calibration testnet faucet. Drips tFIL and USDFC for builders and Storage Providers." />
+    <meta property="og:title" content="Plumb — Filecoin Calibration Faucet" />
+    <meta property="og:description" content="tFIL + USDFC drip on Filecoin Calibration. Built for builders and Storage Providers." />
     <meta property="og:type" content="website" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://challenges.cloudflare.com" />
     <link rel="preconnect" href="https://rsms.me" />
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-    <style>
-      :root {
-        --bg-base:      #050714;
-        --bg-elev:      #0c1024;
-        --bg-card:      #11152e;
-        --bg-card-hi:   #161b3a;
-        --border:       #1f2547;
-        --border-strong:#2d3563;
-        --fg:           #e9ecff;
-        --fg-muted:     #8e95c5;
-        --fg-dim:       #5b6193;
-        --accent:       #38bdf8;
-        --accent-2:     #7dd3fc;
-        --accent-deep:  #2563eb;
-        --ok:           #4ade80;
-        --warn:         #fbbf24;
-        --err:          #f87171;
-        --grad-hero:    linear-gradient(135deg, #38bdf8 0%, #2563eb 50%, #6366f1 100%);
-      }
-      * { box-sizing: border-box }
-      html { scroll-behavior: smooth }
-      html, body {
-        margin: 0; padding: 0;
-        background: var(--bg-base); color: var(--fg);
-        font-family: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        font-feature-settings: "cv11", "ss01", "ss03";
-        font-variant-numeric: tabular-nums;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-      body {
-        min-height: 100vh;
-        background:
-          radial-gradient(ellipse 1200px 600px at 50% -200px, rgba(56,189,248,.15), transparent 60%),
-          radial-gradient(ellipse 800px 400px at 80% 30%, rgba(99,102,241,.10), transparent 60%),
-          var(--bg-base);
-      }
-
-      /* ─── Layout ───────────────────────────────────────────────── */
-      .nav {
-        max-width: 1080px; margin: 0 auto;
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 24px 24px;
-      }
-      .logo {
-        display: flex; align-items: center; gap: 10px;
-        text-decoration: none; color: var(--fg);
-        font-weight: 600; letter-spacing: -0.01em;
-      }
-      .logo svg { width: 28px; height: 28px; flex-shrink: 0; }
-      .logo .dot { color: var(--accent); margin: 0 6px; }
-      .nav-links { display: flex; gap: 24px; font-size: 14px; }
-      .nav-links a {
-        color: var(--fg-muted); text-decoration: none;
-        transition: color 120ms ease;
-      }
-      .nav-links a:hover { color: var(--fg); }
-
-      main {
-        max-width: 1080px;
-        margin: 0 auto;
-        padding: 16px 24px 64px;
-      }
-
-      /* ─── Hero ─────────────────────────────────────────────────── */
-      .hero {
-        text-align: center;
-        padding: 56px 0 40px;
-      }
-      .hero .pill {
-        display: inline-flex; align-items: center; gap: 8px;
-        padding: 6px 14px; border-radius: 999px;
-        background: rgba(56,189,248,.10);
-        border: 1px solid rgba(56,189,248,.25);
-        color: var(--accent-2);
-        font-size: 13px; font-weight: 500;
-        margin-bottom: 24px;
-      }
-      .hero .pill::before {
-        content: ''; width: 6px; height: 6px; border-radius: 50%;
-        background: var(--ok); box-shadow: 0 0 8px var(--ok);
-        animation: pulse 2s ease-in-out infinite;
-      }
-      @keyframes pulse {
-        0%, 100% { opacity: 1 }
-        50% { opacity: .4 }
-      }
-      .hero h1 {
-        font-size: clamp(36px, 6vw, 56px);
-        font-weight: 700; letter-spacing: -0.025em;
-        line-height: 1.05; margin: 0 0 16px;
-      }
-      .hero h1 .grad {
-        background: var(--grad-hero);
-        -webkit-background-clip: text; background-clip: text;
-        -webkit-text-fill-color: transparent; color: transparent;
-      }
-      .hero p {
-        max-width: 540px; margin: 0 auto;
-        color: var(--fg-muted); font-size: 17px; line-height: 1.55;
-      }
-
-      /* ─── Grid (form left, status right) ───────────────────────── */
-      .grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
-        margin-top: 32px;
-      }
-      @media (max-width: 760px) { .grid { grid-template-columns: 1fr } }
-
-      .card {
-        background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg-elev) 100%);
-        border: 1px solid var(--border);
-        border-radius: 18px;
-        padding: 24px;
-        position: relative;
-        overflow: hidden;
-      }
-      .card::before {
-        content: ''; position: absolute; inset: 0; pointer-events: none;
-        background: radial-gradient(800px 200px at 0% 0%, rgba(56,189,248,.05), transparent 50%);
-      }
-      .card > * { position: relative; }
-      .card-title {
-        font-size: 13px; font-weight: 600;
-        color: var(--fg-muted);
-        text-transform: uppercase; letter-spacing: 0.08em;
-        margin: 0 0 16px;
-      }
-
-      /* ─── Drip form ────────────────────────────────────────────── */
-      .form-stack { display: flex; flex-direction: column; gap: 12px; }
-      label.fieldlabel {
-        font-size: 13px; color: var(--fg-muted); margin-bottom: -4px;
-      }
-      input[type="text"] {
-        width: 100%; padding: 14px 16px; font: inherit;
-        font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
-        font-size: 14px; letter-spacing: 0.01em;
-        background: rgba(0,0,0,.25); color: var(--fg);
-        border: 1px solid var(--border-strong); border-radius: 12px;
-        transition: border-color 120ms ease, box-shadow 120ms ease;
-      }
-      input[type="text"]::placeholder { color: var(--fg-dim); }
-      input[type="text"]:focus {
-        outline: none; border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(56,189,248,.15);
-      }
-      .drip-amounts {
-        display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-        font-size: 13px; color: var(--fg-muted);
-      }
-      .drip-amounts > div {
-        background: rgba(56,189,248,.06);
-        border: 1px solid rgba(56,189,248,.18);
-        border-radius: 10px; padding: 10px 12px;
-      }
-      .drip-amounts strong { color: var(--accent-2); font-weight: 600; }
-      button.primary {
-        padding: 14px 16px; font: inherit; font-weight: 600; font-size: 15px;
-        background: var(--grad-hero); color: #fff;
-        border: none; border-radius: 12px; cursor: pointer;
-        transition: transform 100ms ease, box-shadow 200ms ease, opacity 200ms ease;
-        box-shadow: 0 4px 14px rgba(37,99,235,.35);
-      }
-      button.primary:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(37,99,235,.5);
-      }
-      button.primary:disabled { opacity: .5; cursor: not-allowed; }
-      #turnstile-mount { min-height: 65px; display: flex; align-items: center; }
-      #status {
-        padding: 12px 14px; border-radius: 10px;
-        font-size: 14px; line-height: 1.4; display: none;
-      }
-      #status.ok  { display: block; background: rgba(74,222,128,.10); color: #86efac; border: 1px solid rgba(74,222,128,.2); }
-      #status.err { display: block; background: rgba(248,113,113,.10); color: #fca5a5; border: 1px solid rgba(248,113,113,.2); }
-      #status a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-      #status code { font-family: ui-monospace, monospace; font-size: 13px; opacity: .85; }
-
-      /* ─── Status panel ─────────────────────────────────────────── */
-      .balance-row {
-        display: flex; justify-content: space-between; align-items: baseline;
-        margin-bottom: 6px;
-      }
-      .balance-row .label { font-size: 13px; color: var(--fg-muted); }
-      .balance-row .amount {
-        font-family: ui-monospace, 'SF Mono', monospace;
-        font-size: 22px; font-weight: 600;
-        color: var(--fg); letter-spacing: -0.01em;
-      }
-      .balance-row .unit { color: var(--fg-muted); font-size: 13px; margin-left: 4px; font-family: 'Inter var', 'Inter', sans-serif; }
-      .meter {
-        height: 6px; border-radius: 999px;
-        background: rgba(255,255,255,.05);
-        overflow: hidden;
-        margin-bottom: 18px;
-      }
-      .meter > div {
-        height: 100%; border-radius: 999px;
-        background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 100%);
-        width: 0%;
-        transition: width 600ms cubic-bezier(.2, .8, .2, 1);
-      }
-      .meter.warn > div { background: linear-gradient(90deg, var(--warn), #fb923c); }
-      .meter.err  > div { background: linear-gradient(90deg, var(--err), #ec4899); }
-
-      .stats-row {
-        display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-        margin-top: 8px;
-      }
-      .stat {
-        background: rgba(255,255,255,.02);
-        border: 1px solid var(--border);
-        border-radius: 10px; padding: 12px;
-        text-align: center;
-      }
-      .stat .v {
-        font-family: ui-monospace, 'SF Mono', monospace;
-        font-size: 18px; font-weight: 600; color: var(--fg);
-        letter-spacing: -0.01em;
-      }
-      .stat .l { font-size: 11px; color: var(--fg-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
-
-      /* ─── Recent drips feed ────────────────────────────────────── */
-      .feed { margin-top: 32px; }
-      .feed table { width: 100%; border-collapse: collapse; font-size: 14px; }
-      .feed thead th {
-        text-align: left; font-size: 12px; font-weight: 500;
-        color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em;
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--border);
-      }
-      .feed tbody td {
-        padding: 12px; border-bottom: 1px solid var(--border);
-        font-family: ui-monospace, 'SF Mono', monospace;
-        color: var(--fg); font-size: 13px;
-        white-space: nowrap;
-      }
-      .feed tbody tr:hover td { background: rgba(255,255,255,.02); }
-      .feed tbody td.muted { color: var(--fg-muted); font-family: 'Inter var', 'Inter', sans-serif; }
-      .feed tbody td a { color: var(--accent); text-decoration: none; }
-      .feed tbody td a:hover { text-decoration: underline; }
-      .feed .empty {
-        padding: 32px; text-align: center; color: var(--fg-muted); font-size: 14px;
-      }
-
-      /* ─── Footer ───────────────────────────────────────────────── */
-      footer {
-        max-width: 1080px; margin: 0 auto;
-        padding: 32px 24px 48px;
-        color: var(--fg-muted); font-size: 13px;
-        border-top: 1px solid var(--border);
-        margin-top: 48px;
-      }
-      footer .row {
-        display: flex; justify-content: space-between; align-items: center; gap: 16px;
-        flex-wrap: wrap;
-      }
-      footer a { color: var(--fg-muted); text-decoration: none; }
-      footer a:hover { color: var(--fg); }
-      footer .meta {
-        font-family: ui-monospace, 'SF Mono', monospace;
-        font-size: 12px; word-break: break-all;
-      }
-
-      /* ─── Misc ─────────────────────────────────────────────────── */
-      .skel {
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,.05), transparent);
-        background-size: 200% 100%;
-        animation: skel 1.4s linear infinite;
-      }
-      @keyframes skel { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
-      .truncate { display: inline-block; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
-    </style>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <nav class="nav">
-      <a href="/" class="logo" aria-label="Calibration Faucet">
-        <svg viewBox="0 0 64 64" fill="none">
+      <a href="/" class="logo" aria-label="Plumb">
+        <svg viewBox="0 0 64 64" width="28" height="28" fill="none" aria-hidden="true">
           <defs>
-            <linearGradient id="g1" x1="32" y1="6" x2="32" y2="58" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#7dd3fc"/>
-              <stop offset="55%" stop-color="#38bdf8"/>
-              <stop offset="100%" stop-color="#2563eb"/>
+            <linearGradient id="navg" x1="32" y1="4" x2="32" y2="60" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#7dd3fc"/><stop offset="50%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#2563eb"/>
             </linearGradient>
           </defs>
-          <path d="M32 5 C 22 19, 12 30, 12 41 C 12 51.5, 21 59, 32 59 C 43 59, 52 51.5, 52 41 C 52 30, 42 19, 32 5 Z" fill="url(#g1)"/>
-          <path d="M22 44 H 42" stroke="#fff" stroke-opacity=".95" stroke-width="2.6" stroke-linecap="round"/>
+          <rect x="20" y="3" width="24" height="3" rx="1.5" fill="#fff" fill-opacity=".9"/>
+          <rect x="31" y="6" width="2" height="22" fill="#fff" fill-opacity=".9"/>
+          <path d="M32 22 C 22 32, 14 41, 14 48 C 14 56.5, 22 60.5, 32 60.5 C 42 60.5, 50 56.5, 50 48 C 50 41, 42 32, 32 22 Z" fill="url(#navg)"/>
+          <rect x="22" y="50" width="20" height="3" rx="1.5" fill="#fff" fill-opacity=".95"/>
         </svg>
-        <span>Calibration Faucet</span>
+        <span>Plumb</span>
       </a>
       <div class="nav-links">
-        <a href="#status">Status</a>
-        <a href="#drips">Recent</a>
+        <a href="/">Faucet</a>
+        <a href="/status">Status</a>
+        <a href="#contact">Contact</a>
         <a href="https://github.com/Reiers/calibration-faucet" target="_blank" rel="noopener">GitHub</a>
       </div>
     </nav>
@@ -316,274 +42,142 @@
     <main>
       <section class="hero">
         <div class="pill" id="hero-pill">Filecoin Calibration testnet</div>
-        <h1>Free <span class="grad">tFIL + USDFC</span><br/>for builders.</h1>
+        <h1>Plumbing for <span class="grad">builders &amp; SPs</span></h1>
         <p>
-          One drip gives you everything you need to test contracts on Filecoin Calibration:
-          gas to send transactions, USDFC to settle payments. Free, public, rate-limited.
+          Free testnet <strong>tFIL</strong> and <strong>USDFC</strong>, dispensed independently.
+          Take only what you need — gas, payments, or both.
         </p>
       </section>
 
-      <div class="grid">
-        <!-- Drip form -->
-        <section class="card" aria-labelledby="drip-title">
-          <h2 class="card-title" id="drip-title">Request a drip</h2>
-          <form id="drip-form" class="form-stack">
-            <label class="fieldlabel" for="address">Recipient address</label>
-            <input id="address" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="0x…" required />
-            <div class="drip-amounts">
-              <div>You'll receive<br><strong id="m-fil">…</strong> tFIL</div>
-              <div>and<br><strong id="m-usdfc">…</strong> USDFC</div>
-            </div>
-            <div id="turnstile-mount"></div>
-            <button id="drip-btn" type="submit" class="primary">Send drip</button>
-            <div id="status" role="status"></div>
+      <div class="grid-two">
+        <!-- tFIL panel -->
+        <section class="card asset-card" data-asset="fil" aria-labelledby="fil-title">
+          <div class="card-head">
+            <span class="asset-mark fil"></span>
+            <h2 id="fil-title">tFIL</h2>
+            <span class="asset-amount"><strong id="m-fil">…</strong> per drip</span>
+          </div>
+          <p class="card-help">Native gas token. SPs and contract testers.</p>
+          <form data-asset="fil" class="form-stack">
+            <label class="fieldlabel" for="addr-fil">Recipient address</label>
+            <input id="addr-fil" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="t1abc... or 0x... or t410f..." required />
+            <p class="fieldhint" id="addr-fil-hint">Accepts 0x and t410f (delegated) addresses. Native t1/t3 SPs: paste your delegated 0x — derive with <code>lotus state account-key-eth &lt;t1addr&gt;</code>.</p>
+            <div class="captcha-mount" data-mount="fil"></div>
+            <button type="submit" class="primary fil-btn">Send tFIL</button>
           </form>
         </section>
 
-        <!-- Live status -->
-        <section class="card" id="status" aria-labelledby="status-title">
-          <h2 class="card-title" id="status-title">Faucet status</h2>
-
-          <div class="balance-row">
-            <span class="label">tFIL reserve</span>
-            <span><span class="amount" id="b-fil">…</span><span class="unit">tFIL</span></span>
+        <!-- USDFC panel -->
+        <section class="card asset-card" data-asset="usdfc" aria-labelledby="usdfc-title">
+          <div class="card-head">
+            <span class="asset-mark usdfc"></span>
+            <h2 id="usdfc-title">USDFC</h2>
+            <span class="asset-amount"><strong id="m-usdfc">…</strong> per drip</span>
           </div>
-          <div class="meter" id="meter-fil"><div></div></div>
-
-          <div class="balance-row">
-            <span class="label">USDFC reserve</span>
-            <span><span class="amount" id="b-usdfc">…</span><span class="unit">USDFC</span></span>
-          </div>
-          <div class="meter" id="meter-usdfc"><div></div></div>
-
-          <div class="stats-row">
-            <div class="stat"><div class="v" id="s-today">…</div><div class="l">drips · 24h</div></div>
-            <div class="stat"><div class="v" id="s-total">…</div><div class="l">drips · all time</div></div>
-            <div class="stat"><div class="v" id="s-cool">…</div><div class="l">cooldown</div></div>
-          </div>
+          <p class="card-help">Filecoin-native stablecoin (Trove-collateralized).</p>
+          <form data-asset="usdfc" class="form-stack">
+            <label class="fieldlabel" for="addr-usdfc">Recipient address</label>
+            <input id="addr-usdfc" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="0x..." required />
+            <p class="fieldhint">USDFC is an ERC-20. Only 0x and t410f (delegated) addresses work.</p>
+            <div class="captcha-mount" data-mount="usdfc"></div>
+            <button type="submit" class="primary usdfc-btn">Send USDFC</button>
+          </form>
         </section>
       </div>
+
+      <!-- Live status strip -->
+      <section class="card status-strip" id="status-strip">
+        <div class="status-stack">
+          <div class="status-line">
+            <span class="status-label">tFIL reserve</span>
+            <span class="status-amount" id="b-fil">…</span>
+            <div class="meter" id="meter-fil"><div></div></div>
+          </div>
+          <div class="status-line">
+            <span class="status-label">USDFC reserve</span>
+            <span class="status-amount" id="b-usdfc">…</span>
+            <div class="meter" id="meter-usdfc"><div></div></div>
+          </div>
+        </div>
+        <a href="/status" class="status-link">Full status →</a>
+      </section>
 
       <!-- Recent drips -->
       <section class="card feed" id="drips" aria-labelledby="recent-title">
         <h2 class="card-title" id="recent-title">Recent drips</h2>
         <table>
           <thead>
-            <tr>
-              <th>When</th>
-              <th>Recipient</th>
-              <th>tFIL tx</th>
-              <th>USDFC tx</th>
-            </tr>
+            <tr><th>When</th><th>Asset</th><th>Recipient</th><th>Tx</th></tr>
           </thead>
           <tbody id="recent-body"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
         </table>
       </section>
+
+      <!-- Contact -->
+      <section class="card contact-card" id="contact">
+        <h2 class="card-title">Need more?</h2>
+        <p class="contact-text">
+          Standard drips capped at one per address per 24h.
+          For larger transfers, custom amounts, or stuck-on-chain debugging,
+          ping me on Slack:
+        </p>
+        <div class="contact-grid">
+          <div class="contact-item">
+            <svg class="slack-mark" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path fill="#fff" d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+            </svg>
+            <div class="contact-meta">
+              <strong>@Reiers</strong>
+              <span>Filecoin Slack — DM me directly for anything urgent.</span>
+            </div>
+          </div>
+          <div class="contact-item">
+            <svg class="slack-mark" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path fill="#fff" d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+            </svg>
+            <div class="contact-meta">
+              <strong>#fil-net-calibration-discuss</strong>
+              <span>Tag <code>@Reiers</code> for bigger transfers and SP-side requests.</span>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <footer>
-      <div class="row">
-        <div>
-          <span id="brand-link">Calibration Faucet</span>
+      <div class="footer-row">
+        <div class="footer-brand">
+          <span id="brand-link">Plumb</span>
           ·
           <a href="https://github.com/Reiers/calibration-faucet" target="_blank" rel="noopener">source</a>
+          ·
+          <a href="/status">status</a>
         </div>
-        <div class="meta" id="dispenser-link">…</div>
+        <div class="footer-meta">
+          <span>TSE Reiersen · Org. 929 074 912</span>
+          <span class="footer-dispenser" id="dispenser-link">dispenser: …</span>
+        </div>
       </div>
     </footer>
 
-    <script>
-      let info = null
-      let turnstileToken = ''
-      let turnstileWidgetId = null
+    <!-- Drip modal -->
+    <div class="modal-backdrop" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+      <div class="modal-card" role="document">
+        <button class="modal-close" id="modal-close" type="button" aria-label="Close" disabled>×</button>
+        <div class="modal-icon" id="modal-icon"><div class="spinner"></div></div>
+        <h3 class="modal-title" id="modal-title">Sending…</h3>
+        <p class="modal-text" id="modal-text">Submitting transaction to Filecoin Calibration. This usually takes ~30 seconds.</p>
+        <dl class="modal-details" id="modal-details" hidden>
+          <dt>Asset</dt>           <dd id="md-asset">—</dd>
+          <dt>Amount</dt>          <dd id="md-amount">—</dd>
+          <dt>Recipient</dt>       <dd id="md-recipient" class="mono">—</dd>
+          <dt>Tx hash</dt>         <dd id="md-tx" class="mono">—</dd>
+          <dt>Filfox</dt>          <dd id="md-filfox">—</dd>
+          <dt>On-chain verified</dt><dd id="md-verified">—</dd>
+        </dl>
+      </div>
+    </div>
 
-      const $ = (id) => document.getElementById(id)
-      const fmtSec = (s) => {
-        if (s >= 86400) return `${Math.round(s / 86400)}h`
-        if (s >= 3600) return `${Math.round(s / 3600)}h`
-        if (s >= 60)   return `${Math.round(s / 60)}m`
-        return `${s}s`
-      }
-      const fmtNum = (n) => {
-        const num = Number(n)
-        if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B'
-        if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M'
-        if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K'
-        return num.toLocaleString()
-      }
-      const fmtWei = (w, decimals = 18) => {
-        const big = BigInt(w)
-        const div = 10n ** BigInt(decimals)
-        const whole = big / div
-        return fmtNum(Number(whole))
-      }
-      const fmtAge = (unix) => {
-        const s = Math.floor(Date.now() / 1000) - unix
-        if (s < 60) return `${s}s ago`
-        if (s < 3600) return `${Math.floor(s / 60)}m ago`
-        if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-        return `${Math.floor(s / 86400)}d ago`
-      }
-      const truncAddr = (a) => `${a.slice(0,6)}…${a.slice(-4)}`
-      const filfox = (tx) => `https://calibration.filfox.info/en/message/${tx}`
-
-      const setStatus = (msg, kind) => {
-        const el = $('status')
-        if (!el) return
-        el.className = kind || ''
-        el.innerHTML = msg
-      }
-
-      const renderTurnstile = (siteKey) => {
-        if (!siteKey) return
-        const draw = () => {
-          turnstileWidgetId = window.turnstile.render('#turnstile-mount', {
-            sitekey: siteKey,
-            callback: (t) => { turnstileToken = t },
-            'error-callback':   () => { turnstileToken = '' },
-            'expired-callback': () => { turnstileToken = '' },
-            theme: 'dark',
-          })
-        }
-        if (window.turnstile) draw()
-        else window.addEventListener('load', () => setTimeout(draw, 100))
-      }
-
-      const renderInfo = (i) => {
-        info = i
-        $('m-fil').textContent = fmtNum(i.filDrip)
-        $('m-usdfc').textContent = fmtNum(i.usdfcDrip)
-        const dispShort = `${i.dispenser.slice(0,8)}…${i.dispenser.slice(-6)}`
-        $('dispenser-link').innerHTML =
-          `Dispenser: <a href="https://calibration.filfox.info/en/address/${i.dispenser}" target="_blank" rel="noopener">${dispShort}</a>`
-        $('s-cool').textContent = fmtSec(i.addressRateLimitSec)
-        if (i.brandUrl) {
-          $('brand-link').innerHTML = `<a href="${i.brandUrl}">${i.brand}</a>`
-        } else {
-          $('brand-link').textContent = i.brand
-        }
-        renderTurnstile(i.turnstileSiteKey)
-
-        // balances + meter
-        const filWhole = Number(BigInt(i.filBalanceWei) / 10n**18n)
-        const usdfcWhole = Number(BigInt(i.usdfcBalanceWei) / 10n**18n)
-        $('b-fil').textContent = fmtNum(filWhole)
-        $('b-usdfc').textContent = fmtNum(usdfcWhole)
-
-        // meter: fraction of (drips remaining before reserve hit) over (10 drips full bar)
-        const filDripsLeft = Math.max(0, Math.floor((filWhole - Number(i.minReserveFil)) / Number(i.filDrip)))
-        const usdfcDripsLeft = Math.max(0, Math.floor((usdfcWhole - Number(i.minReserveUsdfc)) / Number(i.usdfcDrip)))
-        const barFil = Math.min(100, filDripsLeft * 10)
-        const barUsdfc = Math.min(100, usdfcDripsLeft * 10)
-        const filMeter = $('meter-fil')
-        const usdfcMeter = $('meter-usdfc')
-        filMeter.querySelector('div').style.width = barFil + '%'
-        usdfcMeter.querySelector('div').style.width = barUsdfc + '%'
-        filMeter.className = 'meter' + (barFil < 20 ? ' err' : barFil < 50 ? ' warn' : '')
-        usdfcMeter.className = 'meter' + (barUsdfc < 20 ? ' err' : barUsdfc < 50 ? ' warn' : '')
-      }
-
-      const loadInfo = async () => {
-        try {
-          const res = await fetch('/api/info', { cache: 'no-store' })
-          const i = await res.json()
-          renderInfo(i)
-        } catch (e) {
-          // network error; leave existing UI in place
-        }
-      }
-
-      const loadStats = async () => {
-        try {
-          const res = await fetch('/api/stats', { cache: 'no-store' })
-          const s = await res.json()
-          $('s-today').textContent = fmtNum(s.dripsToday)
-          $('s-total').textContent = fmtNum(s.totalDrips)
-        } catch {}
-      }
-
-      const loadRecent = async () => {
-        try {
-          const res = await fetch('/api/recent?limit=8', { cache: 'no-store' })
-          const { drips } = await res.json()
-          const tbody = $('recent-body')
-          if (!drips || drips.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="4" class="empty">No drips yet — be the first ✨</td></tr>`
-            return
-          }
-          tbody.innerHTML = drips.map((d) => `
-            <tr>
-              <td class="muted">${fmtAge(d.unix)}</td>
-              <td><a href="https://calibration.filfox.info/en/address/${d.address}" target="_blank" rel="noopener">${truncAddr(d.address)}</a></td>
-              <td><a href="${filfox(d.filTx)}" target="_blank" rel="noopener">${d.filTx.slice(0,10)}…</a></td>
-              <td><a href="${filfox(d.usdfcTx)}" target="_blank" rel="noopener">${d.usdfcTx.slice(0,10)}…</a></td>
-            </tr>
-          `).join('')
-        } catch {}
-      }
-
-      const refresh = () => {
-        loadInfo()
-        loadStats()
-        loadRecent()
-      }
-
-      document.getElementById('drip-form').addEventListener('submit', async (e) => {
-        e.preventDefault()
-        const btn = $('drip-btn')
-        const address = $('address').value.trim()
-        if (!/^0x[0-9a-fA-F]{40}$/.test(address)) {
-          setStatus("That doesn't look like a valid address. Expected 0x followed by 40 hex characters.", 'err')
-          return
-        }
-        if (info?.turnstileSiteKey && !turnstileToken) {
-          setStatus('Please complete the captcha first.', 'err')
-          return
-        }
-        btn.disabled = true
-        btn.textContent = 'Sending…'
-        setStatus('Submitting two transactions on Calibration. This usually takes ~30 seconds.', 'ok')
-        try {
-          const res = await fetch('/api/drip', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ address, turnstileToken }),
-          })
-          const data = await res.json()
-          if (data.ok) {
-            setStatus(
-              `<strong>Done.</strong> ${fmtNum(info.filDrip)} tFIL + ${fmtNum(info.usdfcDrip)} USDFC sent to <code>${truncAddr(address)}</code>.<br>` +
-              `tFIL: <a href="${filfox(data.filTxHash)}" target="_blank" rel="noopener">${data.filTxHash.slice(0,12)}…</a>` +
-              ` &nbsp;·&nbsp; ` +
-              `USDFC: <a href="${filfox(data.usdfcTxHash)}" target="_blank" rel="noopener">${data.usdfcTxHash.slice(0,12)}…</a>`,
-              'ok',
-            )
-            $('address').value = ''
-            setTimeout(refresh, 800)
-          } else if (data.error === 'ip_rate_limited' || data.error === 'address_rate_limited') {
-            setStatus(`Rate limited. Try again in ${fmtSec(data.retryAfterSec)}.`, 'err')
-          } else if (data.error === 'faucet_dry') {
-            setStatus('The faucet is temporarily out of funds. We\u2019ll refill shortly.', 'err')
-          } else if (data.error === 'captcha') {
-            setStatus(`Captcha verification failed (${data.reason}). Please retry.`, 'err')
-          } else {
-            setStatus(`Error: ${data.error}${data.reason ? ` — ${data.reason}` : ''}`, 'err')
-          }
-        } catch (err) {
-          setStatus(`Network error: ${err.message}`, 'err')
-        } finally {
-          btn.disabled = false
-          btn.textContent = 'Send drip'
-          if (turnstileWidgetId !== null && window.turnstile) {
-            window.turnstile.reset(turnstileWidgetId)
-          }
-          turnstileToken = ''
-        }
-      })
-
-      refresh()
-      // Auto-refresh stats + balances every 20 seconds
-      setInterval(refresh, 20000)
-    </script>
+    <script src="/app.js"></script>
   </body>
 </html>

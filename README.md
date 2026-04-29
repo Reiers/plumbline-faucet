@@ -1,6 +1,7 @@
 <div align="center">
-  <h1>Calibration Faucet 💧</h1>
-  <p>Public Filecoin Calibration testnet faucet. Drips <strong>tFIL</strong> + <strong>USDFC</strong>.</p>
+  <img src="public/logo.svg" alt="Plumb" width="64" height="64" />
+  <h1>Plumb</h1>
+  <p>Public Filecoin Calibration testnet faucet. Drips <strong>tFIL</strong> and <strong>USDFC</strong> independently for builders and Storage Providers.</p>
   <p><sub>Calibration testnet only. Don't deploy this to mainnet.</sub></p>
 </div>
 
@@ -8,42 +9,38 @@
 
 ## What this is
 
-A public-facing faucet for the Filecoin Calibration testnet. One HTTP
-call (or one click on the landing page) drips both:
+A two-asset public faucet for Filecoin Calibration. tFIL and USDFC are
+served from independent panels — take only what you need. Designed
+for:
 
-- **tFIL** — the native gas token on Calibration
-- **USDFC** — the Filecoin Calibration stablecoin used by Filecoin Pay,
-  FWSS, and any application contracts that settle in USDFC
+- **Builders** writing FEVM contracts that need gas + USDFC settlement
+- **Storage Providers** stress-testing under stable network conditions
+- **Tooling authors** automating end-to-end Calibration test runs
 
-Built to support testing of contracts that need both rails working
-(payments, deposits, fee routing) without forcing users through the
-manual Trove-collateralization flow on `stg.usdfc.net` or hopping
-between half-deprecated faucets.
-
-The canonical public deployment is at
-<https://faucet.reiers.io>. The repo itself is domain-neutral; brand
-name and footer URL are env-driven (`BRAND_NAME`, `BRAND_URL`).
-Leave `BRAND_URL` blank for a generic deployment with no operator
-link in the footer.
+Replaces the manual Trove-collateralization ceremony at
+`stg.usdfc.net` and the half-deprecated chainsafe USDFC drip with one
+HTTP call (or one click) per asset.
 
 ## Endpoints
 
 ```
-GET  /                landing page (HTML)
-GET  /healthz         liveness probe + dispenser balances
-GET  /api/info        public faucet metadata + live dispenser balances
-GET  /api/stats       lifetime + 24h aggregate counters
-GET  /api/recent      last N drips (default 10, max 50)
-POST /api/drip        { address, turnstileToken } → drip
+GET  /                  landing page (split-panel UI)
+GET  /status            full status page (live counters + recent activity)
+GET  /healthz           liveness probe
+GET  /api/info          public faucet metadata + live dispenser balances
+GET  /api/stats         per-asset lifetime + 24h aggregate counters
+GET  /api/recent        last N drips (default 10, max 50)
+POST /api/drip/fil      { address, turnstileToken } → tFIL drip
+POST /api/drip/usdfc    { address, turnstileToken } → USDFC drip
 ```
 
-### `POST /api/drip`
+### Drip request
 
 ```bash
-curl -X POST https://<your-host>/api/drip \
+curl -X POST https://<your-host>/api/drip/fil \
   -H 'content-type: application/json' \
   -d '{
-    "address": "0xabc...",
+    "address": "0x...",
     "turnstileToken": "..."
   }'
 ```
@@ -53,36 +50,60 @@ Success:
 ```json
 {
   "ok": true,
-  "filTxHash":   "0x...",
-  "usdfcTxHash": "0x...",
-  "filAmount":   "5",
-  "usdfcAmount": "100"
+  "txHash": "0x...",
+  "amount": "5000",
+  "asset": "fil",
+  "recipientBalanceBefore": "...",
+  "recipientBalanceAfter": "...",
+  "verified": true
 }
 ```
+
+`verified: true` means the server confirmed on-chain that the
+recipient's balance moved by at least the drip amount before
+returning. The UI surfaces this in the modal as "✓ confirmed."
 
 Errors:
 
 | Status | `error` | Meaning |
 | --- | --- | --- |
 | 400 | `bad_request`             | Body shape invalid |
+| 400 | `invalid_address`         | Recipient is malformed |
+| 400 | `native_filecoin_address_not_supported` | t1/t3/t0 received; user should use their delegated 0x |
 | 400 | `captcha`                 | Turnstile failed (`reason` carries the code) |
-| 429 | `ip_rate_limited`         | Same IP requested in last `IP_RATE_LIMIT_SEC` |
-| 429 | `address_rate_limited`    | Same address requested in last `ADDRESS_RATE_LIMIT_SEC` |
-| 503 | `faucet_dry`              | Dispenser balance below the configured reserve |
+| 429 | `ip_rate_limited`         | Same IP requested this asset in last cooldown window |
+| 429 | `address_rate_limited`    | Same address requested this asset in last cooldown window |
+| 503 | `faucet_dry`              | Dispenser balance below configured reserve |
 | 500 | `drip_failed`             | RPC / chain error during the transfer |
 
-## Default drip + cooldowns
+## Address handling
+
+| Form | tFIL | USDFC |
+| --- | --- | --- |
+| `0x...`         (Ethereum-style)        | ✓ direct send | ✓ direct send |
+| `t410f...`      (delegated EAM)         | ✓ extract embedded 0x and send | ✓ extract embedded 0x and send |
+| `t1...` / `t3...` (native secp256k1/BLS)| ✗ pending — use delegated 0x | ✗ USDFC is ERC-20 |
+| `t0...`         (numeric actor ID)      | ✗ pending — use delegated 0x | ✗ USDFC is ERC-20 |
+
+Native t1/t3/t0 sends via the FEVM `CallActor` precompile are on the
+roadmap. SPs running `lotus state account-key-eth <t1addr>` get back
+their delegated 0x form, which works today.
+
+## Defaults
 
 | Setting | Default |
 | --- | --- |
 | tFIL per drip | 5 |
 | USDFC per drip | 100 |
-| Per-IP cooldown | 24h |
-| Per-address cooldown | 24h |
+| Per-IP cooldown   (per asset) | 24h |
+| Per-address cooldown (per asset) | 24h |
 | Global per-IP burst | 5 req/sec |
-| Min reserve | 20 tFIL + 500 USDFC (faucet refuses drips below) |
+| Min reserve | 20 tFIL + 500 USDFC (faucet refuses below) |
 
-Every value is overridable via env. See [`.env.example`](.env.example).
+The canonical public deployment runs at much higher drip amounts
+(see the live status page); the repo defaults are intentionally
+conservative so other operators forking this don't inherit large
+drips by accident.
 
 ## Local development
 
@@ -90,65 +111,81 @@ Every value is overridable via env. See [`.env.example`](.env.example).
 pnpm install
 
 # Required: dispenser key with both tFIL and USDFC balances on Calibration.
-# Get tFIL from https://faucet.calibnet.chainsafe-fil.io/funds.html
-# Get USDFC by collateralizing tFIL at https://stg.usdfc.net (Trove)
+# Bootstrap tFIL: https://faucet.calibnet.chainsafe-fil.io/funds.html
+# Bootstrap USDFC: open a Trove on https://stg.usdfc.net
 cp .env.example .env
 # edit .env, set FAUCET_PK
-
 pnpm dev
-# faucet listening on http://127.0.0.1:8003
+# faucet listens on http://127.0.0.1:8003
 
 curl http://127.0.0.1:8003/healthz
-curl -X POST http://127.0.0.1:8003/api/drip \
+curl -X POST http://127.0.0.1:8003/api/drip/fil \
   -H 'content-type: application/json' \
   -d '{"address":"0x...your-test-address..."}'
 ```
 
 In dev with no `TURNSTILE_SECRET` set, captcha is bypassed and the
-server logs a warning on startup. **Never run a public deployment
-without Turnstile.**
+server logs a loud warning on startup. **Never run a public
+deployment without Turnstile.**
 
 ## Production deploy
 
-See [`docs/deploy.md`](docs/deploy.md) for the full Hetzner + Caddy
-walkthrough.
+See [`docs/deploy.md`](docs/deploy.md) for the Hetzner + nginx
+walkthrough, including dispenser bootstrap (chainsafe drip → Trove
+mint), TLS via Cloudflare Origin CA, top-up / key-rotation
+operations, and a failure-modes table.
 
-The short version:
-
-1. Provision a Linux box, install Node 22 + pnpm.
-2. `git clone` this repo into `/opt/calibration-faucet`.
-3. Drop `.env` with `FAUCET_PK`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET`.
-4. Install the systemd unit at [`ops/calibration-faucet.service`](ops/calibration-faucet.service).
-5. Reverse-proxy via Caddy (or any TLS terminator) at the public hostname.
-
-## Security and abuse model
+## Security model
 
 - **Single hot wallet.** The dispenser key is the only thing the faucet
-  signs with. Compromise of `FAUCET_PK` drains the dispenser, full stop.
-  Keep balances bounded (`MIN_RESERVE_*` enforces a floor below which
-  drips fail closed; cap the *total* dispenser balance via top-ups, not
-  by the faucet).
+  signs with. Compromise drains the dispenser, full stop. Keep
+  balances bounded (`MIN_RESERVE_*` enforces a floor below which drips
+  fail closed; cap *total* dispenser balance via top-ups, not via the
+  faucet).
 - **Captcha-first, rate-limit-second.** Cloudflare Turnstile is the
-  primary defense against bot floods. The SQLite per-IP and per-address
-  cooldowns are the secondary defense. A burst limiter at the Fastify
-  layer catches obvious DoS attempts before they reach SQLite.
-- **No request bodies are logged.** Drip responses log only addresses
-  and tx hashes; turnstile tokens, headers, and IPs are never
-  persisted to logs at info level.
+  primary defense against bot floods. SQLite per-IP and per-address
+  cooldowns are the secondary defense, scoped per-asset so the two
+  rails are independent. A burst limiter at the Fastify layer
+  catches obvious DoS attempts before they touch SQLite.
 - **`X-Forwarded-For` honored only behind a trusted proxy.** When
-  `TRUSTED_PROXY=true` the server reads the X-Forwarded-For chain;
-  otherwise it falls back to the socket address. Set this correctly
-  for your deployment topology or rate limiting will be either bypassed
-  or applied to the wrong client.
+  `TRUSTED_PROXY=true` the server reads the X-Forwarded-For chain
+  populated by Cloudflare/nginx; otherwise it falls back to the
+  socket address. Misconfigure this and rate limiting is either
+  bypassed or attributed to the proxy IP.
+- **No request bodies are logged.** Drip-success lines log only
+  addresses and tx hashes; turnstile tokens, raw IPs, and headers
+  are never persisted at info level.
+- **No IP attribution in `recent_drips`.** The public `/api/recent`
+  endpoint shows recent rows verbatim, so we deliberately don't
+  store IP alongside drip records — only the address.
+- **On-chain verification.** Every drip awaits the receipt AND
+  re-reads the recipient balance to confirm the funds actually
+  landed before returning to the client. The `verified` boolean
+  in the response is the user-visible signal.
+
+## Contact
+
+Need a larger transfer or a custom amount?
+
+- DM **@Reiers** on Filecoin Slack for anything urgent.
+- Tag **@Reiers** in `#fil-net-calibration-discuss` for bigger
+  transfers or SP-side requests.
 
 ## Roadmap
 
-- [ ] Auto-refill from external Calibration faucets when the dispenser
-      tFIL drops below a threshold (cron + chainsafe drip)
+- [ ] Native `t1` / `t3` / `t0` send via the FEVM `CallActor`
+      precompile
+- [ ] Auto-refill of the dispenser from external Calibration faucets
+      when tFIL drops below a threshold
 - [ ] USDFC top-up via owned Troves rather than manual top-up
 - [ ] Discord / X verification path for higher-tier drips
-- [ ] Public dashboard: drip volume, dispenser balance, recent grants
+- [ ] Public dashboard with historical charts (currently `/status`
+      is point-in-time only)
 
 ## License
 
 MIT
+
+<div align="center">
+  <sub>TSE Reiersen · Org. 929 074 912</sub>
+</div>

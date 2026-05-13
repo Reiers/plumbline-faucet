@@ -17,6 +17,19 @@
 //   GET  /api/recent        last N drips (address + tx hashes only)
 //   POST /api/drip/fil      { address, turnstileToken } → tFIL drip
 //   POST /api/drip/usdfc    { address, turnstileToken } → USDFC drip
+//   POST /api/public/drip/fil    { address } → small anonymous tFIL drip
+//   POST /api/public/drip/usdfc  { address } → small anonymous USDFC drip
+//   GET  /api/claim_token_all?address=...      → ChainSafe-compatible
+//                                                 envelope, both tokens
+//
+// Anonymous public-drip endpoints (intended for public OSS CLIs that
+// cannot embed a secret, e.g. SynapS3's `synaps3 wallet fund-testnet`):
+//   - No auth, no captcha.
+//   - Smaller drip amounts (PUBLIC_FIL_DRIP / PUBLIC_USDFC_DRIP).
+//   - Stricter per-IP cap (MAX_PUBLIC_DRIPS_PER_IP, default 1/24h)
+//     in addition to the standard per-address cap, which still applies.
+//   - Per-IP windows are kept in a separate (asset, ip) bucket so they
+//     do not interfere with the captcha-gated path counters.
 //
 // API key authentication (optional, for CLI / CI integrations):
 //   Send `Authorization: Bearer <key>` or `X-API-Key: <key>` on the
@@ -142,6 +155,13 @@ async function main() {
       minReserveFil: cfg.MIN_RESERVE_FIL,
       minReserveUsdfc: cfg.MIN_RESERVE_USDFC,
       apiKeyAuthSupported: true,
+      publicDrip: {
+        enabled: true,
+        filDrip: cfg.PUBLIC_FIL_DRIP,
+        usdfcDrip: cfg.PUBLIC_USDFC_DRIP,
+        maxDripsPerIp: cfg.MAX_PUBLIC_DRIPS_PER_IP,
+        windowSec: cfg.IP_RATE_LIMIT_SEC,
+      },
     }
   })
 
@@ -385,6 +405,340 @@ async function main() {
 
   app.post('/api/drip/fil', async (req, reply) => handleDrip('fil', req, reply))
   app.post('/api/drip/usdfc', async (req, reply) => handleDrip('usdfc', req, reply))
+
+  // ─── Anonymous public-drip endpoints (no auth, no captcha) ────────
+  //
+  // Designed for public open-source CLIs (e.g. SynapS3) that ship to
+  // end users and cannot embed a secret. We compensate by:
+  //   - serving a deliberately small amount (PUBLIC_*_DRIP)
+  //   - capping per-IP at MAX_PUBLIC_DRIPS_PER_IP per 24h (default 1)
+  //   - keeping the same per-address cap (2/24h) so wallet rotation
+  //     within a single IP doesn't help
+  //
+  // We bucket the per-IP counter under an explicit 'public_<asset>'
+  // pseudo-asset string so callers of /api/public/drip don't burn the
+  // captcha-path IP quota and vice versa.
+  const publicDripBody = z.object({
+    address: z.string().min(3).max(120),
+  })
+  const handlePublicDrip = async (
+    asset: Asset,
+    req: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    const ip = req.ip
+    const parsed = publicDripBody.safeParse(req.body)
+    if (!parsed.success) {
+      return reply.code(400).send({ ok: false, error: 'bad_request' })
+    }
+    const recipient = classifyRecipient(parsed.data.address)
+    if (recipient.kind === 'invalid') {
+      return reply.code(400).send({
+        ok: false,
+        error: 'invalid_address',
+        reason: recipient.reason,
+      })
+    }
+    if (asset === 'usdfc' && recipient.kind === 'filecoin') {
+      return reply.code(400).send({
+        ok: false,
+        error: 'usdfc_native_unsupported',
+        reason:
+          'USDFC is an ERC-20. Only 0x and t410f addresses are accepted.',
+      })
+    }
+    const target =
+      recipient.kind === 'eth' || recipient.kind === 'delegated'
+        ? recipient.address.toLowerCase()
+        : recipient.original.toLowerCase()
+
+    const publicBucket = `public_${asset}` as Asset // separate counter family
+    const now = Math.floor(Date.now() / 1000)
+
+    const ipWin = store.windowForIp(ip, publicBucket)
+    if (
+      ipWin &&
+      now - ipWin.windowStartUnix <= cfg.IP_RATE_LIMIT_SEC &&
+      ipWin.count >= cfg.MAX_PUBLIC_DRIPS_PER_IP
+    ) {
+      const retryAfterSec = cfg.IP_RATE_LIMIT_SEC - (now - ipWin.windowStartUnix)
+      return reply.code(429).send({
+        ok: false,
+        error: 'public_ip_rate_limited',
+        scope: 'public_ip',
+        used: ipWin.count,
+        max: cfg.MAX_PUBLIC_DRIPS_PER_IP,
+        windowSec: cfg.IP_RATE_LIMIT_SEC,
+        retryAfterSec,
+        retryAtUnix: now + retryAfterSec,
+      })
+    }
+
+    // Per-address cap still uses the canonical 'fil'/'usdfc' bucket so
+    // an address can't get one public drip AND one captcha drip in the
+    // same window from the same wallet.
+    const addrWin = store.windowForAddress(target, asset)
+    if (
+      addrWin &&
+      now - addrWin.windowStartUnix <= cfg.ADDRESS_RATE_LIMIT_SEC &&
+      addrWin.count >= cfg.MAX_DRIPS_PER_ADDRESS
+    ) {
+      const retryAfterSec =
+        cfg.ADDRESS_RATE_LIMIT_SEC - (now - addrWin.windowStartUnix)
+      return reply.code(429).send({
+        ok: false,
+        error: 'address_rate_limited',
+        scope: 'address',
+        used: addrWin.count,
+        max: cfg.MAX_DRIPS_PER_ADDRESS,
+        windowSec: cfg.ADDRESS_RATE_LIMIT_SEC,
+        retryAfterSec,
+        retryAtUnix: now + retryAfterSec,
+      })
+    }
+
+    const reserveProblem = await drip.checkReserves(asset)
+    if (reserveProblem) {
+      app.log.warn({ reserveProblem, asset, route: 'public' }, 'faucet dry')
+      return reply
+        .code(503)
+        .send({ ok: false, error: 'faucet_dry', reason: reserveProblem })
+    }
+
+    const amountHuman = asset === 'fil' ? cfg.PUBLIC_FIL_DRIP : cfg.PUBLIC_USDFC_DRIP
+    try {
+      const result =
+        asset === 'fil'
+          ? await drip.dripFil(recipient, { amountHuman })
+          : await drip.dripUsdfc(recipient, { amountHuman })
+      // Per-IP counter under the public bucket only (the captcha-path
+      // IP quota is untouched). Per-address counter under the canonical
+      // asset so wallet rotation can't sidestep the address cap.
+      store.recordIpOnly(ip, publicBucket, now, cfg.IP_RATE_LIMIT_SEC)
+      store.recordAddressOnly(target, asset, now, cfg.ADDRESS_RATE_LIMIT_SEC)
+      stats.recordDrip(
+        now,
+        target,
+        asset,
+        result.txHash,
+        asset === 'fil'
+          ? parseEther(amountHuman)
+          : parseUnits(amountHuman, USDFC_DECIMALS),
+      )
+      app.log.info(
+        {
+          asset,
+          route: 'public',
+          recipient: target,
+          ip,
+          txHash: result.txHash,
+          verified: result.verified,
+          amount: amountHuman,
+        },
+        'public drip ok',
+      )
+      return { ok: true, ...result }
+    } catch (err) {
+      app.log.error({ err, recipient: target, ip, asset, route: 'public' }, 'public drip failed')
+      return reply.code(500).send({ ok: false, error: 'drip_failed', reason: String(err) })
+    }
+  }
+  app.post('/api/public/drip/fil', async (req, reply) =>
+    handlePublicDrip('fil', req, reply),
+  )
+  app.post('/api/public/drip/usdfc', async (req, reply) =>
+    handlePublicDrip('usdfc', req, reply),
+  )
+
+  // ─── ChainSafe-compatible claim_token_all endpoint ─────────────
+  //
+  // The ChainSafe Forest Explorer faucet exposes a single GET endpoint
+  // that drips BOTH tFIL and USDFC in one call and returns a JSON array
+  // of token-claim results. SynapS3 (and likely other Filecoin CLIs)
+  // hardcode that exact endpoint shape.
+  //
+  // We mirror that contract so callers can swap their endpoint URL to
+  // Plumbline without rewriting their client. Rate limits match the
+  // anonymous /api/public/drip/* path (per-IP + per-address) and the
+  // smaller PUBLIC_*_DRIP amounts are used.
+  //
+  // Request:  GET /api/claim_token_all?address=0x...
+  // Response: [
+  //   { "faucetInfo": "CalibnetFIL",   "tx_hash": "0x..." },
+  //   { "faucetInfo": "CalibnetUSDFC", "tx_hash": "0x..." }
+  // ]
+  // Per-token errors are reported per-element (so a partial success
+  // — e.g. FIL ok, USDFC rate-limited — still returns 200 with an
+  // error key on the USDFC element). Full-failure responses use a
+  // non-2xx status with the same array shape in the body.
+  type ChainSafeClaim = {
+    faucetInfo: string
+    tx_hash?: string
+    error?: { message: string }
+  }
+  const chainSafeAssetMap = [
+    { asset: 'fil' as Asset, label: 'CalibnetFIL' },
+    { asset: 'usdfc' as Asset, label: 'CalibnetUSDFC' },
+  ]
+  app.get('/api/claim_token_all', async (req, reply) => {
+    const ip = req.ip
+    const addr = String(
+      (req.query as { address?: string }).address ?? '',
+    ).trim()
+    if (!addr) {
+      return reply.code(400).send([
+        {
+          faucetInfo: 'CalibnetFIL',
+          error: { message: 'missing address query parameter' },
+        },
+        {
+          faucetInfo: 'CalibnetUSDFC',
+          error: { message: 'missing address query parameter' },
+        },
+      ])
+    }
+    const recipient = classifyRecipient(addr)
+    if (recipient.kind === 'invalid') {
+      return reply.code(400).send([
+        {
+          faucetInfo: 'CalibnetFIL',
+          error: { message: `invalid address: ${recipient.reason}` },
+        },
+        {
+          faucetInfo: 'CalibnetUSDFC',
+          error: { message: `invalid address: ${recipient.reason}` },
+        },
+      ])
+    }
+    const target =
+      recipient.kind === 'eth' || recipient.kind === 'delegated'
+        ? recipient.address.toLowerCase()
+        : recipient.original.toLowerCase()
+
+    const now = Math.floor(Date.now() / 1000)
+    const results: ChainSafeClaim[] = []
+    let anyOk = false
+    let anyFail = false
+
+    for (const { asset, label } of chainSafeAssetMap) {
+      // USDFC requires an 0x or t410f recipient.
+      if (asset === 'usdfc' && recipient.kind === 'filecoin') {
+        results.push({
+          faucetInfo: label,
+          error: {
+            message:
+              'USDFC is an ERC-20; native t1/t3 addresses are not supported',
+          },
+        })
+        anyFail = true
+        continue
+      }
+      const publicBucket = `public_${asset}` as Asset
+      const ipWin = store.windowForIp(ip, publicBucket)
+      if (
+        ipWin &&
+        now - ipWin.windowStartUnix <= cfg.IP_RATE_LIMIT_SEC &&
+        ipWin.count >= cfg.MAX_PUBLIC_DRIPS_PER_IP
+      ) {
+        const retryAfterSec =
+          cfg.IP_RATE_LIMIT_SEC - (now - ipWin.windowStartUnix)
+        results.push({
+          faucetInfo: label,
+          error: {
+            message: `per-IP rate limit reached, retry after ${retryAfterSec}s`,
+          },
+        })
+        anyFail = true
+        continue
+      }
+      const addrWin = store.windowForAddress(target, asset)
+      if (
+        addrWin &&
+        now - addrWin.windowStartUnix <= cfg.ADDRESS_RATE_LIMIT_SEC &&
+        addrWin.count >= cfg.MAX_DRIPS_PER_ADDRESS
+      ) {
+        const retryAfterSec =
+          cfg.ADDRESS_RATE_LIMIT_SEC - (now - addrWin.windowStartUnix)
+        results.push({
+          faucetInfo: label,
+          error: {
+            message: `per-address rate limit reached, retry after ${retryAfterSec}s`,
+          },
+        })
+        anyFail = true
+        continue
+      }
+      const reserveProblem = await drip.checkReserves(asset)
+      if (reserveProblem) {
+        app.log.warn(
+          { reserveProblem, asset, route: 'claim_token_all' },
+          'faucet dry',
+        )
+        results.push({
+          faucetInfo: label,
+          error: { message: `faucet dry: ${reserveProblem}` },
+        })
+        anyFail = true
+        continue
+      }
+      const amountHuman =
+        asset === 'fil' ? cfg.PUBLIC_FIL_DRIP : cfg.PUBLIC_USDFC_DRIP
+      try {
+        const result =
+          asset === 'fil'
+            ? await drip.dripFil(recipient, { amountHuman })
+            : await drip.dripUsdfc(recipient, { amountHuman })
+        store.recordIpOnly(ip, publicBucket, now, cfg.IP_RATE_LIMIT_SEC)
+        store.recordAddressOnly(
+          target,
+          asset,
+          now,
+          cfg.ADDRESS_RATE_LIMIT_SEC,
+        )
+        stats.recordDrip(
+          now,
+          target,
+          asset,
+          result.txHash,
+          asset === 'fil'
+            ? parseEther(amountHuman)
+            : parseUnits(amountHuman, USDFC_DECIMALS),
+        )
+        app.log.info(
+          {
+            asset,
+            route: 'claim_token_all',
+            recipient: target,
+            ip,
+            txHash: result.txHash,
+            verified: result.verified,
+            amount: amountHuman,
+          },
+          'public drip ok',
+        )
+        results.push({ faucetInfo: label, tx_hash: result.txHash })
+        anyOk = true
+      } catch (err) {
+        app.log.error(
+          { err, asset, route: 'claim_token_all', recipient: target, ip },
+          'public drip failed',
+        )
+        results.push({
+          faucetInfo: label,
+          error: { message: `drip failed: ${String(err)}` },
+        })
+        anyFail = true
+      }
+    }
+
+    // ChainSafe's status convention: 200 if anything succeeded, 4xx if
+    // both failed for client-fixable reasons (we use 429 since the most
+    // common cause is rate-limit), 5xx only on server-side failure.
+    if (!anyOk && anyFail) {
+      reply.code(429)
+    }
+    return results
+  })
 
   if (!cfg.TURNSTILE_SECRET) {
     app.log.warn(

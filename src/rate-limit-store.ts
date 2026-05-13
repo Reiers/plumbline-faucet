@@ -125,31 +125,54 @@ export class RateLimitStore {
    * new one with count=1. If the window is still open, bump count by 1.
    */
   recordDrip(ip: string, address: string, asset: Asset, now: number, windowSeconds: number): void {
-    const lower = address.toLowerCase()
     const tx = this.db.transaction(() => {
-      const ipRow = this.windowForIp(ip, asset)
-      const ipFresh = !ipRow || now - ipRow.windowStartUnix > windowSeconds
-      this.db
-        .prepare(`
-          INSERT INTO ip_drips (ip, asset, window_start_unix, count) VALUES (?, ?, ?, 1)
-          ON CONFLICT(ip, asset) DO UPDATE SET
-            window_start_unix = CASE WHEN ? THEN excluded.window_start_unix ELSE ip_drips.window_start_unix END,
-            count             = CASE WHEN ? THEN 1 ELSE ip_drips.count + 1 END
-        `)
-        .run(ip, asset, now, ipFresh ? 1 : 0, ipFresh ? 1 : 0)
-
-      const addrRow = this.windowForAddress(address, asset)
-      const addrFresh = !addrRow || now - addrRow.windowStartUnix > windowSeconds
-      this.db
-        .prepare(`
-          INSERT INTO address_drips (address, asset, window_start_unix, count) VALUES (?, ?, ?, 1)
-          ON CONFLICT(address, asset) DO UPDATE SET
-            window_start_unix = CASE WHEN ? THEN excluded.window_start_unix ELSE address_drips.window_start_unix END,
-            count             = CASE WHEN ? THEN 1 ELSE address_drips.count + 1 END
-        `)
-        .run(lower, asset, now, addrFresh ? 1 : 0, addrFresh ? 1 : 0)
+      this._bumpIp(ip, asset, now, windowSeconds)
+      this._bumpAddress(address, asset, now, windowSeconds)
     })
     tx()
+  }
+
+  /** Increment only the per-IP counter (for the given asset bucket). */
+  recordIpOnly(ip: string, asset: Asset, now: number, windowSeconds: number): void {
+    const tx = this.db.transaction(() => {
+      this._bumpIp(ip, asset, now, windowSeconds)
+    })
+    tx()
+  }
+
+  /** Increment only the per-address counter (for the given asset bucket). */
+  recordAddressOnly(address: string, asset: Asset, now: number, windowSeconds: number): void {
+    const tx = this.db.transaction(() => {
+      this._bumpAddress(address, asset, now, windowSeconds)
+    })
+    tx()
+  }
+
+  private _bumpIp(ip: string, asset: Asset, now: number, windowSeconds: number): void {
+    const ipRow = this.windowForIp(ip, asset)
+    const ipFresh = !ipRow || now - ipRow.windowStartUnix > windowSeconds
+    this.db
+      .prepare(`
+        INSERT INTO ip_drips (ip, asset, window_start_unix, count) VALUES (?, ?, ?, 1)
+        ON CONFLICT(ip, asset) DO UPDATE SET
+          window_start_unix = CASE WHEN ? THEN excluded.window_start_unix ELSE ip_drips.window_start_unix END,
+          count             = CASE WHEN ? THEN 1 ELSE ip_drips.count + 1 END
+      `)
+      .run(ip, asset, now, ipFresh ? 1 : 0, ipFresh ? 1 : 0)
+  }
+
+  private _bumpAddress(address: string, asset: Asset, now: number, windowSeconds: number): void {
+    const lower = address.toLowerCase()
+    const addrRow = this.windowForAddress(address, asset)
+    const addrFresh = !addrRow || now - addrRow.windowStartUnix > windowSeconds
+    this.db
+      .prepare(`
+        INSERT INTO address_drips (address, asset, window_start_unix, count) VALUES (?, ?, ?, 1)
+        ON CONFLICT(address, asset) DO UPDATE SET
+          window_start_unix = CASE WHEN ? THEN excluded.window_start_unix ELSE address_drips.window_start_unix END,
+          count             = CASE WHEN ? THEN 1 ELSE address_drips.count + 1 END
+      `)
+      .run(lower, asset, now, addrFresh ? 1 : 0, addrFresh ? 1 : 0)
   }
 
   close(): void {

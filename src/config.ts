@@ -21,6 +21,9 @@ export interface FaucetConfig {
   // ─── Drip amounts ────────────────────────────────────────────────
   FIL_DRIP: string   // human-readable, e.g. "5"
   USDFC_DRIP: string // human-readable, e.g. "100"
+  /** Smaller amounts served by /api/public/drip/* (no auth, no captcha). */
+  PUBLIC_FIL_DRIP: string
+  PUBLIC_USDFC_DRIP: string
 
   // ─── Rate limits ─────────────────────────────────────────────────
   IP_RATE_LIMIT_SEC: number
@@ -29,6 +32,11 @@ export interface FaucetConfig {
   MAX_DRIPS_PER_IP: number
   /** Max drips per address per asset within ADDRESS_RATE_LIMIT_SEC. */
   MAX_DRIPS_PER_ADDRESS: number
+  /** Max drips per IP per asset within IP_RATE_LIMIT_SEC for
+   *  /api/public/drip/*. Stricter than the captcha-gated path because
+   *  there is no proof-of-not-bot.
+   */
+  MAX_PUBLIC_DRIPS_PER_IP: number
   GLOBAL_RPS: number
 
   // ─── Bot protection ──────────────────────────────────────────────
@@ -83,11 +91,14 @@ export function loadConfig(): FaucetConfig {
 
     FIL_DRIP: opt('FIL_DRIP', '5'),
     USDFC_DRIP: opt('USDFC_DRIP', '100'),
+    PUBLIC_FIL_DRIP:   opt('PUBLIC_FIL_DRIP',   '1'),
+    PUBLIC_USDFC_DRIP: opt('PUBLIC_USDFC_DRIP', '5'),
 
     IP_RATE_LIMIT_SEC: optNum('IP_RATE_LIMIT_SEC', 86_400),       // 24h
     ADDRESS_RATE_LIMIT_SEC: optNum('ADDRESS_RATE_LIMIT_SEC', 86_400),
-    MAX_DRIPS_PER_IP:      optNum('MAX_DRIPS_PER_IP',      2),
-    MAX_DRIPS_PER_ADDRESS: optNum('MAX_DRIPS_PER_ADDRESS', 2),
+    MAX_DRIPS_PER_IP:        optNum('MAX_DRIPS_PER_IP',        2),
+    MAX_DRIPS_PER_ADDRESS:   optNum('MAX_DRIPS_PER_ADDRESS',   2),
+    MAX_PUBLIC_DRIPS_PER_IP: optNum('MAX_PUBLIC_DRIPS_PER_IP', 1),
     GLOBAL_RPS: optNum('GLOBAL_RPS', 5),
 
     TURNSTILE_SITE_KEY: process.env.TURNSTILE_SITE_KEY ?? null,

@@ -38,20 +38,84 @@
       <section class="hero api-hero" style="padding: 28px 0 12px;">
         <h1 style="font-size: clamp(26px, 3.6vw, 34px);">API</h1>
         <p>
-          Drip tFIL and USDFC from CLI, CI, or your own test runner.
-          The same endpoints the web UI uses, with API-key auth in
-          place of the captcha.
+          Three ways to get a drip on Filecoin Calibration:
+          a public low-limit endpoint for open-source CLIs,
+          the captcha-gated path the web UI uses,
+          and an API-key path for CI / test runners that need a higher cap.
         </p>
         <div class="api-meta">
           <span class="api-chip"><span class="api-chip-label">base</span><code>https://faucet.reiers.io</code></span>
-          <span class="api-chip"><span class="api-chip-label">auth</span>Bearer key or X-API-Key</span>
-          <span class="api-chip"><span class="api-chip-label">format</span>JSON</span>
+          <span class="api-chip"><span class="api-chip-label">public</span>no auth, low cap</span>
+          <span class="api-chip"><span class="api-chip-label">key</span>Bearer / X-API-Key</span>
         </div>
       </section>
 
       <!-- ── Getting a key ─────────────────────────────────────── -->
+      <!-- Public drip (no auth) -->
+      <section class="card api-doc-card" id="public-drip">
+        <h2 class="card-title">Public drip <span class="card-subtle">no auth, no captcha</span></h2>
+        <p class="contact-text">
+          For public open-source CLIs that ship to end users and
+          cannot embed a secret. Smaller drip, stricter per-IP cap,
+          same per-address cap.
+        </p>
+        <pre class="code-block"><code><span class="sn-cmd">curl</span> <span class="sn-flag">-X</span> POST <span class="sn-url">https://faucet.reiers.io/api/public/drip/fil</span> <span class="sn-cont">\</span>
+  <span class="sn-flag">-H</span> <span class="sn-str">'content-type: application/json'</span> <span class="sn-cont">\</span>
+  <span class="sn-flag">-d</span> <span class="sn-str">'{"address":"<span class="sn-tok">0xYourAddressHere</span>"}'</span></code></pre>
+        <p class="contact-text">Same shape for USDFC:</p>
+        <pre class="code-block"><code><span class="sn-cmd">curl</span> <span class="sn-flag">-X</span> POST <span class="sn-url">https://faucet.reiers.io/api/public/drip/usdfc</span> <span class="sn-cont">\</span>
+  <span class="sn-flag">-H</span> <span class="sn-str">'content-type: application/json'</span> <span class="sn-cont">\</span>
+  <span class="sn-flag">-d</span> <span class="sn-str">'{"address":"<span class="sn-tok">0xYourAddressHere</span>"}'</span></code></pre>
+        <p class="contact-text">
+          Live caps and amounts are advertised on
+          <a href="/api/info" target="_blank"><code>/api/info</code></a>
+          under <code>publicDrip</code>, so CLIs can render real
+          numbers without hardcoding. Defaults today:
+        </p>
+        <ul class="api-list">
+          <li><strong>tFIL drip:</strong> 1 tFIL per request</li>
+          <li><strong>USDFC drip:</strong> 5 USDFC per request</li>
+          <li><strong>Per-IP cap:</strong> 1 request per asset per 24h</li>
+          <li><strong>Per-address cap:</strong> 2 requests per asset per 24h (shared with the captcha path)</li>
+        </ul>
+        <p class="contact-text">
+          Need more than once a day? See the
+          <a href="#get-key">API key</a> path below.
+        </p>
+      </section>
+
+      <!-- ChainSafe-compatible endpoint -->
+      <section class="card api-doc-card" id="chainsafe-compat">
+        <h2 class="card-title">ChainSafe-compatible endpoint <span class="card-subtle">drop-in replacement</span></h2>
+        <p class="contact-text">
+          Plumbline also exposes a ChainSafe-compatible endpoint that
+          drips <strong>both tFIL and USDFC in one call</strong> and
+          returns the same JSON envelope the ChainSafe Forest Explorer
+          faucet returns. Existing clients (e.g.
+          <a href="https://github.com/strahe/SynapS3" target="_blank" rel="noopener">SynapS3</a>)
+          can point at Plumbline by changing one URL.
+        </p>
+        <pre class="code-block"><code><span class="sn-cmd">curl</span> <span class="sn-url">'https://faucet.reiers.io/api/claim_token_all?address=<span class="sn-tok">0xYourAddressHere</span>'</span></code></pre>
+        <p class="contact-text">Response:</p>
+        <pre class="json-block"><code>[
+  { <span class="sn-key">"faucetInfo"</span>: <span class="sn-str">"CalibnetFIL"</span>,   <span class="sn-key">"tx_hash"</span>: <span class="sn-str">"0x…"</span> },
+  { <span class="sn-key">"faucetInfo"</span>: <span class="sn-str">"CalibnetUSDFC"</span>, <span class="sn-key">"tx_hash"</span>: <span class="sn-str">"0x…"</span> }
+]</code></pre>
+        <p class="contact-text">
+          Per-token errors are reported per-element, so a partial
+          success (e.g. FIL ok, USDFC rate-limited) still returns 200
+          with an <code>error</code> object on the failed element.
+          Full-failure responses return 429 with the same array shape.
+        </p>
+        <p class="contact-text">
+          Same caps as <a href="#public-drip">/api/public/drip/*</a>:
+          per-IP and per-address windows apply identically.
+        </p>
+      </section>
+
+      <!-- API key -->
       <section class="card api-doc-card" id="get-key">
-        <h2 class="card-title">Getting a key</h2>
+        <h2 class="card-title">API key <span class="card-subtle">for CI &amp; test runners</span></h2>
         <p class="contact-text">
           Keys are issued out-of-band by the operator. Ping
           <strong>@Reiers</strong> on Filecoin Slack
@@ -160,7 +224,8 @@
             <tr><td>401</td><td><code>revoked_api_key</code></td><td>Key disabled by the operator</td></tr>
             <tr><td>429</td><td><code>api_key_rate_limited</code></td><td>Per-key drip window exhausted</td></tr>
             <tr><td>429</td><td><code>address_rate_limited</code></td><td>Per-address window exhausted</td></tr>
-            <tr><td>429</td><td><code>ip_rate_limited</code></td><td>Per-IP window exhausted (no API key)</td></tr>
+            <tr><td>429</td><td><code>ip_rate_limited</code></td><td>Per-IP window exhausted (captcha path)</td></tr>
+            <tr><td>429</td><td><code>public_ip_rate_limited</code></td><td>Per-IP window exhausted on <code>/api/public/drip/*</code></td></tr>
             <tr><td>503</td><td><code>faucet_dry</code></td><td>Dispenser balance below reserve</td></tr>
             <tr><td>500</td><td><code>drip_failed</code></td><td>RPC error sending the on-chain tx</td></tr>
           </tbody>

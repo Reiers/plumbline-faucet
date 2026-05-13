@@ -129,8 +129,9 @@ export class Drip {
   }
 
   /** Drip tFIL to whatever address shape we have (eth, delegated, or native). */
-  async dripFil(recipient: RecipientShape): Promise<DripResult> {
-    const amount = parseEther(this.cfg.FIL_DRIP)
+  async dripFil(recipient: RecipientShape, opts: { amountHuman?: string } = {}): Promise<DripResult> {
+    const amountHuman = opts.amountHuman ?? this.cfg.FIL_DRIP
+    const amount = parseEther(amountHuman)
 
     if (recipient.kind === 'eth' || recipient.kind === 'delegated') {
       const target = recipient.kind === 'eth' ? recipient.address : recipient.address
@@ -145,7 +146,7 @@ export class Drip {
       const after = await this.pub.getBalance({ address: target })
       return {
         txHash,
-        amount: this.cfg.FIL_DRIP,
+        amount: amountHuman,
         asset: 'fil',
         recipientBalanceBefore: before.toString(),
         recipientBalanceAfter: after.toString(),
@@ -184,7 +185,7 @@ export class Drip {
       const after = await filecoinWalletBalance(this.cfg.RPC_URL, recipient.original)
       return {
         txHash,
-        amount: this.cfg.FIL_DRIP,
+        amount: amountHuman,
         asset: 'fil',
         recipientBalanceBefore: before.toString(),
         recipientBalanceAfter: after.toString(),
@@ -197,12 +198,13 @@ export class Drip {
   }
 
   /** Drip USDFC. Only 0x / delegated recipients (it's ERC-20). */
-  async dripUsdfc(recipient: RecipientShape): Promise<DripResult> {
+  async dripUsdfc(recipient: RecipientShape, opts: { amountHuman?: string } = {}): Promise<DripResult> {
     if (recipient.kind !== 'eth' && recipient.kind !== 'delegated') {
       throw new Error('USDFC only supports 0x / t410f recipients')
     }
     const target = recipient.kind === 'eth' ? recipient.address : recipient.address
-    const amount = parseUnits(this.cfg.USDFC_DRIP, USDFC_DECIMALS)
+    const amountHuman = opts.amountHuman ?? this.cfg.USDFC_DRIP
+    const amount = parseUnits(amountHuman, USDFC_DECIMALS)
     const before = (await this.pub.readContract({
       address: this.cfg.USDFC_ADDRESS,
       abi: erc20Abi,
@@ -226,7 +228,7 @@ export class Drip {
     })) as bigint
     return {
       txHash,
-      amount: this.cfg.USDFC_DRIP,
+      amount: amountHuman,
       asset: 'usdfc',
       recipientBalanceBefore: before.toString(),
       recipientBalanceAfter: after.toString(),

@@ -73,8 +73,8 @@
           numbers without hardcoding. Defaults today:
         </p>
         <ul class="api-list">
-          <li><strong>tFIL drip:</strong> 1 tFIL per request</li>
-          <li><strong>USDFC drip:</strong> 5 USDFC per request</li>
+          <li><strong>tFIL drip:</strong> 1000 tFIL per request</li>
+          <li><strong>USDFC drip:</strong> 100 USDFC per request</li>
           <li><strong>Per-IP cap:</strong> 1 request per asset per 24h</li>
           <li><strong>Per-address cap:</strong> 2 requests per asset per 24h (shared with the captcha path)</li>
         </ul>
@@ -84,16 +84,18 @@
         </p>
       </section>
 
-      <!-- ChainSafe-compatible endpoint -->
-      <section class="card api-doc-card" id="chainsafe-compat">
-        <h2 class="card-title">ChainSafe-compatible endpoint <span class="card-subtle">drop-in replacement</span></h2>
+      <!-- Dual-drip endpoint -->
+      <section class="card api-doc-card" id="dual-drip">
+        <h2 class="card-title">Dual-drip endpoint <span class="card-subtle">tFIL + USDFC in one call</span></h2>
         <p class="contact-text">
-          Plumbline also exposes a ChainSafe-compatible endpoint that
-          drips <strong>both tFIL and USDFC in one call</strong> and
-          returns the same JSON envelope the ChainSafe Forest Explorer
-          faucet returns. Existing clients (e.g.
-          <a href="https://github.com/strahe/SynapS3" target="_blank" rel="noopener">SynapS3</a>)
-          can point at Plumbline by changing one URL.
+          A single endpoint that drips
+          <strong>both tFIL and USDFC in one call</strong> and returns
+          an array of per-token results. Designed for testnet wallet
+          bootstrap flows where the caller wants both assets in one
+          step. The envelope shape is compatible with the legacy
+          community-faucet contract that many existing Filecoin
+          tooling CLIs already speak, so callers can point their
+          existing client at Plumbline with a single URL change.
         </p>
         <pre class="code-block"><code><span class="sn-cmd">curl</span> <span class="sn-url">'https://faucet.reiers.io/api/claim_token_all?address=<span class="sn-tok">0xYourAddressHere</span>'</span></code></pre>
         <p class="contact-text">Response:</p>

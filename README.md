@@ -25,8 +25,9 @@ for:
 - **Tooling authors** automating end-to-end Calibration test runs
 
 Replaces the manual Trove-collateralization ceremony at
-`stg.usdfc.net` and the half-deprecated chainsafe USDFC drip with one
-HTTP call (or one click) per asset.
+`stg.usdfc.net` with one HTTP call (or one click) per asset. Both
+tFIL and USDFC come from a single dispenser wallet you control, so
+you are not depending on a third-party drip remaining healthy.
 
 ## Endpoints
 

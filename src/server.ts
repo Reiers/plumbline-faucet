@@ -167,6 +167,54 @@ async function main() {
 
   app.get('/api/stats', async () => stats.read())
 
+  // ─── Prometheus text-format metrics ─────────────────────────────
+  //
+  // Standard Prometheus scrape endpoint. Exposes dispenser health,
+  // lifetime drip counters, and a low-reserve gauge. No secrets.
+  //
+  // Scrape config example:
+  //   - job_name: plumbline
+  //     static_configs: [{ targets: ['faucet.reiers.io'] }]
+  app.get('/metrics', async (_req, reply) => {
+    reply.type('text/plain; version=0.0.4; charset=utf-8')
+    const state = await drip.state()
+    const s = stats.read() as unknown as Record<string, string | number>
+    // Reserve gauges: 1 when balance < min_reserve.
+    const filDec = 10n ** 18n
+    const minFilWei = BigInt(cfg.MIN_RESERVE_FIL) * filDec
+    const minUsdWei = BigInt(cfg.MIN_RESERVE_USDFC) * filDec
+    const lowFil = state.filBalance < minFilWei ? 1 : 0
+    const lowUsd = state.usdfcBalance < minUsdWei ? 1 : 0
+    const totalFil   = Number(s.totalDripsFil   ?? 0)
+    const totalUsdfc = Number(s.totalDripsUsdfc ?? 0)
+    const todayFil   = Number(s.filDripsToday   ?? 0)
+    const todayUsdfc = Number(s.usdfcDripsToday ?? 0)
+    const lines: string[] = []
+    const push = (help: string, type: string, name: string, samples: string[]) => {
+      lines.push(`# HELP ${name} ${help}`)
+      lines.push(`# TYPE ${name} ${type}`)
+      for (const s of samples) lines.push(s)
+    }
+    push('Faucet HTTP server is up and responding.', 'gauge', 'plumbline_faucet_up',
+         [`plumbline_faucet_up 1`])
+    push('Dispenser tFIL balance in wei.', 'gauge', 'plumbline_faucet_fil_dispenser_balance_wei',
+         [`plumbline_faucet_fil_dispenser_balance_wei ${state.filBalance.toString()}`])
+    push('Dispenser USDFC balance in wei (6-dp-equivalent).', 'gauge', 'plumbline_faucet_usdfc_dispenser_balance_wei',
+         [`plumbline_faucet_usdfc_dispenser_balance_wei ${state.usdfcBalance.toString()}`])
+    push('Lifetime successful drips by asset.', 'counter', 'plumbline_faucet_drips_total',
+         [`plumbline_faucet_drips_total{asset="fil"} ${totalFil}`,
+          `plumbline_faucet_drips_total{asset="usdfc"} ${totalUsdfc}`])
+    push('Rolling 24h successful drips by asset.', 'gauge', 'plumbline_faucet_drips_24h',
+         [`plumbline_faucet_drips_24h{asset="fil"} ${todayFil}`,
+          `plumbline_faucet_drips_24h{asset="usdfc"} ${todayUsdfc}`])
+    push('1 when dispenser balance is below the configured minimum reserve.', 'gauge', 'plumbline_faucet_low_reserve',
+         [`plumbline_faucet_low_reserve{asset="fil"} ${lowFil}`,
+          `plumbline_faucet_low_reserve{asset="usdfc"} ${lowUsd}`])
+    push('Unix timestamp of the current scrape.', 'gauge', 'plumbline_faucet_scrape_timestamp_seconds',
+         [`plumbline_faucet_scrape_timestamp_seconds ${Math.floor(Date.now() / 1000)}`])
+    return lines.join('\n') + '\n'
+  })
+
   app.get('/api/recent', async (req) => {
     const limit = Math.min(50, Math.max(1, Number((req.query as { limit?: string }).limit ?? 10)))
     return { drips: stats.recent(limit) }

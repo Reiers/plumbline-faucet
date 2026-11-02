@@ -6,15 +6,25 @@ All endpoints return JSON. CORS is open.
 
 ---
 
+## Builder API v1
+
+New integrations should use the stable, versioned API under `/api/v1`: read-only status endpoints (faucet, drips, network, SP test target), drip aliases, OpenAPI 3.1, a stability promise and a CLI. Full reference: [`api-v1.md`](api-v1.md).
+
+---
+
+## Unversioned endpoints
+
+These predate v1 and keep working unchanged. New integrations should prefer v1.
+
 ## Quick reference
 
 | Method | Path                | Purpose                                     | Auth |
 |--------|---------------------|---------------------------------------------|------|
-| GET    | `/healthz`          | liveness + dispenser balances               | —    |
-| GET    | `/api/info`         | brand, drip amounts, rate-limit defaults    | —    |
-| GET    | `/api/stats`        | lifetime + 24h counters                     | —    |
-| GET    | `/api/recent`       | last N drips (address + tx hashes)          | —    |
-| GET    | `/api/convert`      | 0x ↔ f410f address conversion               | —    |
+| GET    | `/healthz`          | liveness + dispenser balances               | none |
+| GET    | `/api/info`         | brand, drip amounts, rate-limit defaults    | none |
+| GET    | `/api/stats`        | lifetime + 24h counters                     | none |
+| GET    | `/api/recent`       | last N drips (address + tx hashes)          | none |
+| GET    | `/api/convert`      | 0x ↔ f410f address conversion               | none |
 | POST   | `/api/drip/fil`     | request a tFIL drip                         | captcha OR API key |
 | POST   | `/api/drip/usdfc`   | request a USDFC drip (0x / t410f only)      | captcha OR API key |
 
@@ -98,12 +108,12 @@ curl https://faucet.reiers.io/api/info
 Request a tFIL drip.
 
 **Body:**
-- `address` (required) — any of:
+- `address` (required), any of:
   - `0x...` Ethereum-style address (40 hex)
   - `t410f...` delegated Filecoin address (gets converted to the matching 0x)
   - `t1...`, `t3...` native Filecoin BLS/SECP address
   - `t0...` ID address
-- `turnstileToken` (optional, ignored if API key present) — Turnstile token from the browser UI
+- `turnstileToken` (optional, ignored if API key present): Turnstile token from the browser UI
 
 **Headers (for CLI):**
 - `Authorization: Bearer <key>` **or** `X-API-Key: <key>`
@@ -184,6 +194,7 @@ All errors are JSON with `ok: false` and an `error` code. HTTP status reflects t
 |------|-----------------------------|-------------------------------------------------------------|
 | 400  | `bad_request`               | body didn't parse                                           |
 | 400  | `invalid_address`           | address couldn't be classified                              |
+| 400  | `unspendable_address`       | zero address, precompile, masked ID (0xff00...), burn address or built-in actor (t00 to t099); `reason` says which |
 | 400  | `usdfc_native_unsupported`  | tried to drip USDFC to a native t1/t3 address               |
 | 400  | `captcha`                   | no API key, and Turnstile token was missing or invalid      |
 | 401  | `invalid_api_key`           | API key header present but not recognised                   |
@@ -207,7 +218,7 @@ A 429 always includes:
 }
 ```
 
-Use `retryAtUnix` (epoch seconds) to know when to retry — it's already adjusted for the actual window open time.
+Use `retryAtUnix` (epoch seconds) to know when to retry; it's already adjusted for the actual window open time.
 
 ---
 

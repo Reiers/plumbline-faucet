@@ -145,6 +145,36 @@ systemctl restart plumbline-faucet
 (Drops every cooldown for everyone; only do this for emergencies or
 during testing.)
 
+## Builder API v1
+
+The `/api/v1` endpoints need no extra service. Optional settings are
+listed in `.env.example` under "Builder API v1". If Calix runs on the
+same host, point the server at the local Calix API so
+`/api/v1/network` and `/api/v1/sp` skip the public round trip:
+
+```bash
+CALIX_URL=http://127.0.0.1:<calix-api-port>
+CALIX_PUBLIC_URL=https://calix.reiers.io
+```
+
+On first start the server adds a nullable `amount_wei` column to the
+`recent_drips` table. Existing rows keep a null amount.
+
+Smoke test after a deploy:
+
+```bash
+curl -s https://<your-host>/api/v1 | jq .apiVersion            # "1"
+curl -s https://<your-host>/api/v1/faucet/status | jq .healthy
+curl -s https://<your-host>/api/v1/network | jq '{healthy, stale, fetchedAt}'
+curl -s https://<your-host>/api/v1/sp | jq '.targets[0]'
+curl -sI https://<your-host>/api/v1 | grep -i -E 'ratelimit|access-control-allow-origin'
+```
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `502 upstream_unavailable` on `/api/v1/network` or `/api/v1/sp` | Calix unreachable for longer than `UPSTREAM_STALE_MAX_SEC` | Check Calix, then `CALIX_URL` |
+| `stale: true` in `/api/v1/network` | Calix failing, last good value served | Same as above |
+
 ## Failure modes
 
 | Symptom | Cause | Fix |

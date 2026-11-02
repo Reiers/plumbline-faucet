@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+#
+# plumbline-cli: tiny client for the Plumbline builder API v1.
+# Needs bash, curl and jq. Reference: docs/api-v1.md
+#
+#   plumbline-cli status            faucet health, balances, reserves, limits
+#   plumbline-cli network           calibration health (from Calix)
+#   plumbline-cli sp                SP test-target status
+#   plumbline-cli drips [--limit N] [--offset N]
+#
+# Options: --json prints the raw v1 response.
+# Env:     PLUMBLINE_API (default https://faucet.reiers.io/api/v1)
+#
+# Exit codes: 0 ok / healthy, 2 not healthy (status, network, sp),
+#             1 request failed or the API returned an error.
+
+set -euo pipefail
+
+API="${PLUMBLINE_API:-https://faucet.reiers.io/api/v1}"
+API="${API%/}"
+VERSION="1"
+
+usage() {
+  sed -n '4,16p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+die() { echo "plumbline-cli: $*" >&2; exit 1; }
+
+for dep in curl jq; do
+  command -v "$dep" >/dev/null 2>&1 || die "$dep is required"
+done
+
+cmd="${1:-}"
+[ -n "$cmd" ] || { usage >&2; exit 1; }
+shift || true
+
+json=0
+limit=""
+offset=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) json=1 ;;
+    --limit) limit="${2:-}"; shift ;;
+    --offset) offset="${2:-}"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+  shift
+done
+
+# GET a v1 path and print the body. Exits 1 on transport or API errors.
+get() {
+  local url="$API$1" body code
+  body="$(curl -sS --max-time 20 -H 'accept: application/json' \
+    -H "user-agent: plumbline-cli/$VERSION" -w '\n%{http_code}' "$url")" \
+    || die "request failed: $url"
+  code="${body##*$'\n'}"
+  body="${body%$'\n'*}"
+  if ! jq -e . >/dev/null 2>&1 <<<"$body"; then
+    die "HTTP $code from $url (not JSON)"
+  fi
+  if [ "$code" != "200" ] || [ "$(jq -r '.ok' <<<"$body")" != "true" ]; then
+    if [ "$json" = 1 ]; then echo "$body" >&2; fi
+    die "HTTP $code $(jq -r '"\(.error // "error"): \(.message // .reason // "")"' <<<"$body")"
+  fi
+  if [ "$(jq -r '.apiVersion // empty' <<<"$body")" != "$VERSION" ]; then
+    die "unexpected apiVersion from $url"
+  fi
+  printf '%s' "$body"
+}
+
+# Exit 0 when .healthy is true, otherwise 2.
+health_exit() {
+  if [ "$(jq -r '.healthy' <<<"$1")" = "true" ]; then exit 0; fi
+  exit 2
+}
+
+case "$cmd" in
+  status)
+    b="$(get /faucet/status)"
+    if [ "$json" = 1 ]; then echo "$b"; else
+      jq -r '
+        "faucet     \(.state) (healthy: \(.healthy))" +
+          (if (.reasons | length) > 0 then "  reasons: \(.reasons | join(", "))" else "" end),
+        "network    \(.network) (chain \(.chainId))",
+        "dispenser  \(.dispenser)",
+        (.assets[] |
+          "\(.symbol | . + "      " | .[0:6])     balance \(.balance // "unknown")  floor \(.reserveFloor)  drip \(.dripAmount)  public \(.publicDripAmount)  canDrip \(.canDrip)"),
+        "limits     captcha \(.limits.captcha.perIp.max)/IP, \(.limits.captcha.perAddress.max)/address per \(.limits.captcha.perIp.windowSec)s; public \(.limits.public.perIp.max)/IP; reads \(.limits.readRequestsPerIpPerMinute)/min",
+        "24h drips  tFIL \(.stats.drips24h.fil)  USDFC \(.stats.drips24h.usdfc)",
+        "fetched    \(.fetchedAt // "n/a")\(if .stale then " (stale)" else "" end)"
+      ' <<<"$b"
+    fi
+    health_exit "$b"
+    ;;
+  network)
+    b="$(get /network)"
+    if [ "$json" = 1 ]; then echo "$b"; else
+      jq -r '
+        "network    \(.network) \(.state) (healthy: \(.healthy), calix level: \(.level))",
+        "headline   \(.headline // "")",
+        "head       epoch \(.chain.epoch)  nv\(.chain.networkVersion)  age \(.chain.headAgeSeconds)s",
+        "upgrade    \(.upgrade.name // "none")  epoch \(.upgrade.epoch // "-")  activated \(.upgrade.activated)",
+        "blocks     \(.signals.blocksPerEpoch.value // "-" | if type == "number" then (. * 100 | round / 100) else . end) per epoch  null rounds \(.signals.nullRoundPercent.value // "-")%",
+        "source     \(.source.url) \(.source.endpoints | join(" "))",
+        "fetched    \(.fetchedAt)  age \(.cacheAgeSec)s\(if .stale then "  STALE: \(.upstreamError // "")" else "" end)"
+      ' <<<"$b"
+    fi
+    health_exit "$b"
+    ;;
+  sp)
+    b="$(get /sp)"
+    if [ "$json" = 1 ]; then echo "$b"; else
+      jq -r '
+        . as $r |
+        "sp         \(.state) (healthy: \(.healthy))  epoch \(.epoch)",
+        (.targets[] | "  \(.address)  \(.status)  blocks in last \($r.windowEpochs // "-") epochs: \(.blocksLast60 // "-")  last block \(.lastBlockAgeSec // "-")s ago"),
+        "fetched    \(.fetchedAt)\(if .stale then "  STALE: \(.upstreamError // "")" else "" end)"
+      ' <<<"$b"
+    fi
+    health_exit "$b"
+    ;;
+  drips)
+    q=""
+    if [ -n "$limit" ]; then q="limit=$limit"; fi
+    if [ -n "$offset" ]; then q="${q:+$q&}offset=$offset"; fi
+    b="$(get "/faucet/drips${q:+?$q}")"
+    if [ "$json" = 1 ]; then echo "$b"; else
+      jq -r '
+        "showing \(.drips | length) of \(.total) (offset \(.offset))\(if .nextOffset != null then ", next: --offset \(.nextOffset)" else "" end)",
+        (.drips[] | "\(.time)  \(.asset | . + "     " | .[0:5])  \(.amount // "?")  \(.address)  \(.explorerUrl)")
+      ' <<<"$b"
+    fi
+    ;;
+  help) usage ;;
+  *) usage >&2; exit 1 ;;
+esac

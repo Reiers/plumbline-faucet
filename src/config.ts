@@ -52,6 +52,26 @@ export interface FaucetConfig {
   // ─── Branding (rendered in the UI) ───────────────────────────────
   BRAND_NAME: string
   BRAND_URL: string
+
+  // ─── Builder API v1 (/api/v1/*) ──────────────────────────────────
+  /** Base URL the server uses to reach the Calix JSON API. */
+  CALIX_URL: string
+  /** Public Calix URL reported as the data source in v1 responses. */
+  CALIX_PUBLIC_URL: string
+  /** Comma-separated SP test targets reported by GET /api/v1/sp. */
+  SP_TARGETS: string[]
+  /** Per-IP GET budget per minute for /api/v1/* read endpoints. */
+  API_V1_GET_RATE_LIMIT: number
+  /** Server-side cache TTL for Calix-derived data, in seconds. */
+  UPSTREAM_CACHE_SEC: number
+  /** Max age of a cached Calix payload that may still be served as stale. */
+  UPSTREAM_STALE_MAX_SEC: number
+  /** Timeout for a single Calix request, in milliseconds. */
+  UPSTREAM_TIMEOUT_MS: number
+  /** Cache TTL for dispenser balances in GET /api/v1/faucet/status. */
+  FAUCET_STATUS_CACHE_SEC: number
+  /** Transaction explorer link template; {tx} is replaced. */
+  EXPLORER_TX_URL: string
 }
 
 const required = (name: string): string => {
@@ -111,5 +131,21 @@ export function loadConfig(): FaucetConfig {
 
     BRAND_NAME: opt('BRAND_NAME', 'Calibration Faucet'),
     BRAND_URL: opt('BRAND_URL', ''),
+
+    CALIX_URL: opt('CALIX_URL', 'https://calix.reiers.io').replace(/\/+$/, ''),
+    CALIX_PUBLIC_URL: opt('CALIX_PUBLIC_URL', 'https://calix.reiers.io').replace(/\/+$/, ''),
+    SP_TARGETS: opt('SP_TARGETS', 't0143103')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    API_V1_GET_RATE_LIMIT: optNum('API_V1_GET_RATE_LIMIT', 60),
+    UPSTREAM_CACHE_SEC: optNum('UPSTREAM_CACHE_SEC', 30),
+    UPSTREAM_STALE_MAX_SEC: optNum('UPSTREAM_STALE_MAX_SEC', 600),
+    UPSTREAM_TIMEOUT_MS: optNum('UPSTREAM_TIMEOUT_MS', 5000),
+    FAUCET_STATUS_CACHE_SEC: optNum('FAUCET_STATUS_CACHE_SEC', 15),
+    EXPLORER_TX_URL: opt(
+      'EXPLORER_TX_URL',
+      'https://calibration.filfox.info/en/message/{tx}',
+    ),
   }
 }

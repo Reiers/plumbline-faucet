@@ -10,8 +10,11 @@
 //     - total_drips_count_usdfc  u64
 //     - total_fil_distributed    bigint string (wei)
 //     - total_usdfc_distributed  bigint string (wei)
-//   recent_drips (unix INTEGER, address TEXT, asset TEXT, tx TEXT)
-//     bounded to the last 50 rows; pruned on insert.
+//   recent_drips (unix INTEGER, address TEXT, asset TEXT, tx TEXT,
+//                 amount_wei TEXT NULL)
+//     bounded to the last 50 rows; pruned on insert. amount_wei was
+//     added for the builder API v1 and is NULL for rows written before
+//     that column existed.
 //
 // IPs are deliberately NOT stored in recent_drips; the public
 // /api/recent endpoint exposes rows verbatim and per-IP attribution
@@ -37,6 +40,14 @@ export interface RecentDrip {
   tx: string
 }
 
+/** Recent drip row including the per-drip amount (NULL for legacy rows). */
+export interface RecentDripWithAmount extends RecentDrip {
+  amountWei: string | null
+}
+
+/** Maximum number of rows kept in recent_drips. */
+export const RECENT_DRIPS_RETENTION = 50
+
 export class StatsStore {
   private db: Database.Database
 
@@ -56,6 +67,16 @@ export class StatsStore {
       CREATE INDEX IF NOT EXISTS recent_drips_unix_idx ON recent_drips(unix DESC);
     `)
     this.migrateLegacyRecentDrips()
+    this.addAmountColumn()
+  }
+
+  // Additive migration: per-drip amount, used by GET /api/v1/faucet/drips.
+  private addAmountColumn(): void {
+    const cols = this.db
+      .prepare(`PRAGMA table_info(recent_drips)`)
+      .all() as { name: string }[]
+    if (cols.some((c) => c.name === 'amount_wei')) return
+    this.db.exec(`ALTER TABLE recent_drips ADD COLUMN amount_wei TEXT`)
   }
 
   // v1 stored a single recent_drips row per drip with separate fil_tx and
@@ -121,13 +142,15 @@ export class StatsStore {
         .run(totalKey, next.toString())
 
       this.db
-        .prepare('INSERT INTO recent_drips (unix, address, asset, tx) VALUES (?, ?, ?, ?)')
-        .run(unix, address.toLowerCase(), asset, tx)
+        .prepare(
+          'INSERT INTO recent_drips (unix, address, asset, tx, amount_wei) VALUES (?, ?, ?, ?, ?)',
+        )
+        .run(unix, address.toLowerCase(), asset, tx, weiAmount.toString())
 
       this.db.exec(`
         DELETE FROM recent_drips
         WHERE rowid NOT IN (
-          SELECT rowid FROM recent_drips ORDER BY unix DESC LIMIT 50
+          SELECT rowid FROM recent_drips ORDER BY unix DESC LIMIT ${RECENT_DRIPS_RETENTION}
         )
       `)
     })
@@ -168,5 +191,19 @@ export class StatsStore {
         'SELECT unix, address, asset, tx FROM recent_drips ORDER BY unix DESC LIMIT ?',
       )
       .all(limit) as RecentDrip[]
+  }
+
+  /** Page through recent drips, newest first. Used by the v1 API. */
+  recentPage(limit: number, offset: number): { rows: RecentDripWithAmount[]; total: number } {
+    const rows = this.db
+      .prepare(
+        `SELECT unix, address, asset, tx, amount_wei AS amountWei
+           FROM recent_drips ORDER BY unix DESC, rowid DESC LIMIT ? OFFSET ?`,
+      )
+      .all(limit, offset) as RecentDripWithAmount[]
+    const total = (
+      this.db.prepare('SELECT COUNT(*) AS n FROM recent_drips').get() as { n: number }
+    ).n
+    return { rows, total }
   }
 }

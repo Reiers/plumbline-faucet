@@ -69,6 +69,62 @@ export function classifyRecipient(input: string): RecipientShape {
   return { kind: 'invalid', reason: 'unsupported_protocol' }
 }
 
+// ─── Unspendable recipients ─────────────────────────────────────────
+//
+// Addresses that parse fine but where nobody can ever spend the funds.
+// Drips to them are pure loss, so every drip path refuses them with
+// 400 unspendable_address before captcha, rate limits or any RPC call.
+//
+//   zero_address         0x0000000000000000000000000000000000000000,
+//                        also as t410f/f410f (delegated form of the same bytes)
+//   evm_precompile       0x00..0001 to 0x00..00ff (Ethereum precompile range)
+//   fevm_precompile      0xfe00000000000000000000000000000000000000..ff
+//                        (Filecoin precompiles, incl. CallActor at ..03)
+//   masked_id_address    0xff0000000000000000000000 + 8-byte actor id
+//                        (FEVM masked ID addresses; the drip would bypass
+//                        the address-shape checks below)
+//   builtin_actor        t0/f0 ids below 100: system, init, reward, cron,
+//                        power, market, verifreg, datacap, EAM, burnt funds
+//   burn_address         0x000000000000000000000000000000000000dEaD
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+const DEAD_ADDRESS = '0x000000000000000000000000000000000000dead'
+const MIN_USER_ACTOR_ID = 100n
+
+export type UnspendableReason =
+  | 'zero_address'
+  | 'evm_precompile'
+  | 'fevm_precompile'
+  | 'masked_id_address'
+  | 'builtin_actor'
+  | 'burn_address'
+
+export function unspendableReason(r: RecipientShape): UnspendableReason | null {
+  if (r.kind === 'eth' || r.kind === 'delegated') {
+    const a = r.address.toLowerCase()
+    if (a === ZERO_ADDRESS) return 'zero_address'
+    if (a === DEAD_ADDRESS) return 'burn_address'
+    if (a.startsWith('0x' + '00'.repeat(19))) return 'evm_precompile'
+    if (a.startsWith('0xfe' + '00'.repeat(18))) return 'fevm_precompile'
+    if (a.startsWith('0xff' + '00'.repeat(11))) return 'masked_id_address'
+    return null
+  }
+  if (r.kind === 'filecoin' && r.protocol === 0) {
+    const id = BigInt(r.original.slice(2))
+    if (id < MIN_USER_ACTOR_ID) return 'builtin_actor'
+  }
+  return null
+}
+
+export const UNSPENDABLE_MESSAGE: Record<UnspendableReason, string> = {
+  zero_address: 'The zero address cannot spend funds. Send your own wallet address.',
+  evm_precompile: 'This is an Ethereum precompile address. Funds sent there are lost.',
+  fevm_precompile: 'This is a Filecoin precompile address. Funds sent there are lost.',
+  masked_id_address: 'Masked ID addresses (0xff00...) are not accepted. Use the 0x or t410f address of your wallet.',
+  builtin_actor: 'This is a built-in system actor (ID below 100). Funds sent there are lost.',
+  burn_address: 'This is a well-known burn address. Funds sent there are lost.',
+}
+
 function encodeT0(id: bigint): Uint8Array {
   // [0x00, ...leb128(id)]
   const out: number[] = [0x00]

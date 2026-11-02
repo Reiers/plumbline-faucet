@@ -42,6 +42,28 @@ POST /api/drip/fil      { address, turnstileToken } → tFIL drip
 POST /api/drip/usdfc    { address, turnstileToken } → USDFC drip
 ```
 
+### Builder API v1
+
+Stable, versioned, read-only JSON API for tooling. No auth for reads,
+60 requests per minute per IP, CORS open, OpenAPI 3.1 at
+[`/api/v1/openapi.json`](https://faucet.reiers.io/api/v1/openapi.json).
+
+```
+GET  /api/v1                 index of endpoints
+GET  /api/v1/faucet/status   healthy flag, balances, reserve floors, drip amounts, limits
+GET  /api/v1/faucet/drips    recent drips with amount, tx and explorer link
+GET  /api/v1/network         Calibration health from Calix (cached 30s)
+GET  /api/v1/sp              SP test-target status from Calix (cached 30s)
+GET  /api/v1/openapi.json    OpenAPI 3.1 description
+POST /api/v1/drip/fil        alias of POST /api/drip/fil (same auth and limits)
+POST /api/v1/drip/usdfc      alias of POST /api/drip/usdfc (same auth and limits)
+```
+
+Builder API v1 reference, stability promise and error codes:
+[`docs/api-v1.md`](docs/api-v1.md). Command-line client:
+[`scripts/plumbline-cli`](scripts/plumbline-cli) (`status`, `network`, `sp`,
+`drips`). Changes: [`CHANGELOG.md`](CHANGELOG.md).
+
 Full API reference for CLI / CI integrators: [`docs/api.md`](docs/api.md).
 Web-UI callers use Turnstile; CLI / CI callers should use an API key
 (`Authorization: Bearer <key>`) issued by the operator — see
@@ -153,6 +175,16 @@ curl -X POST http://127.0.0.1:8003/api/drip/fil \
 In dev with no `TURNSTILE_SECRET` set, captcha is bypassed and the
 server logs a loud warning on startup. **Never run a public
 deployment without Turnstile.**
+
+## Tests
+
+```bash
+pnpm test
+```
+
+Runs the builder API v1, unspendable-address and CLI suites. It starts the real server against a
+local fake RPC and a fake Calix, so no chain access or funds are
+needed.
 
 ## Production deploy
 

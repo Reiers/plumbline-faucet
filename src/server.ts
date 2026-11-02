@@ -21,6 +21,9 @@
 //   POST /api/public/drip/usdfc  { address } → small anonymous USDFC drip
 //   GET  /api/claim_token_all?address=...      → ChainSafe-compatible
 //                                                 envelope, both tokens
+//   /api/v1/*               builder API v1 (see src/api-v1.ts): read-only
+//                           status endpoints plus POST /api/v1/drip/{fil,usdfc}
+//                           aliases of the drip handlers above
 //
 // Anonymous public-drip endpoints (intended for public OSS CLIs that
 // cannot embed a secret, e.g. SynapS3's `synaps3 wallet fund-testnet`):
@@ -52,8 +55,14 @@ import { RateLimitStore } from './rate-limit-store.js'
 import { StatsStore } from './stats-store.js'
 import { Drip } from './drip.js'
 import { verifyTurnstile } from './turnstile.js'
-import { classifyRecipient } from './fil-address.js'
+import {
+  classifyRecipient,
+  unspendableReason,
+  UNSPENDABLE_MESSAGE,
+  type RecipientShape,
+} from './fil-address.js'
 import { ApiKeyStore, type ApiKey } from './api-key-store.js'
+import { registerApiV1 } from './api-v1.js'
 
 const USDFC_DECIMALS = 18
 
@@ -272,6 +281,21 @@ async function main() {
     }
   })
 
+  // ─── Unspendable recipients (zero address, precompiles, system actors)
+  // Checked on every drip path right after address parsing, before
+  // captcha, rate limits or any RPC call, so a refused request never
+  // burns a quota or sends a transaction.
+  const unspendableBody = (recipient: RecipientShape) => {
+    const why = unspendableReason(recipient)
+    if (!why) return null
+    return {
+      ok: false as const,
+      error: 'unspendable_address',
+      reason: why,
+      message: UNSPENDABLE_MESSAGE[why],
+    }
+  }
+
   // ─── Drip handlers (one per asset) ──────────────────────────────
   const dripBody = z.object({
     // Native BLS (t3) addresses are 86 chars; allow some headroom.
@@ -299,6 +323,11 @@ async function main() {
         error: 'invalid_address',
         reason: recipient.reason,
       })
+    }
+    const unspendable = unspendableBody(recipient)
+    if (unspendable) {
+      app.log.warn({ asset, reason: unspendable.reason, ip }, 'refused unspendable recipient')
+      return reply.code(400).send(unspendable)
     }
     if (asset === 'usdfc' && recipient.kind === 'filecoin') {
       return reply.code(400).send({
@@ -454,6 +483,18 @@ async function main() {
   app.post('/api/drip/fil', async (req, reply) => handleDrip('fil', req, reply))
   app.post('/api/drip/usdfc', async (req, reply) => handleDrip('usdfc', req, reply))
 
+  // ─── Builder API v1 (/api/v1/*) ─────────────────────────────────
+  // Versioned read-only endpoints plus stable aliases of the two drip
+  // routes above. The aliases call handleDrip directly, so captcha,
+  // API-key auth and every rate limit are shared with /api/drip/*.
+  await registerApiV1(app, {
+    cfg,
+    stats,
+    dispenserAddress: drip.dispenserAddress,
+    getDispenserState: () => drip.state(),
+    handleDrip,
+  })
+
   // ─── Anonymous public-drip endpoints (no auth, no captcha) ────────
   //
   // Designed for public open-source CLIs (e.g. SynapS3) that ship to
@@ -486,6 +527,11 @@ async function main() {
         error: 'invalid_address',
         reason: recipient.reason,
       })
+    }
+    const unspendable = unspendableBody(recipient)
+    if (unspendable) {
+      app.log.warn({ asset, reason: unspendable.reason, ip }, 'refused unspendable recipient')
+      return reply.code(400).send(unspendable)
     }
     if (asset === 'usdfc' && recipient.kind === 'filecoin') {
       return reply.code(400).send({
@@ -622,7 +668,7 @@ async function main() {
   type ChainSafeClaim = {
     faucetInfo: string
     tx_hash?: string
-    error?: { message: string }
+    error?: { message: string; code?: string; reason?: string }
   }
   const chainSafeAssetMap = [
     { asset: 'fil' as Asset, label: 'CalibnetFIL' },
@@ -692,6 +738,24 @@ async function main() {
             faucetInfo: 'CalibnetUSDFC',
             error: { message: `invalid address: ${recipient.reason}` },
           },
+        ]),
+      )
+      endResponse()
+      return
+    }
+    const unspendable = unspendableBody(recipient)
+    if (unspendable) {
+      app.log.warn({ route: 'claim_token_all', reason: unspendable.reason, ip }, 'refused unspendable recipient')
+      reply.raw.statusCode = 400
+      const error = {
+        message: 'unspendable_address: ' + unspendable.message,
+        code: 'unspendable_address',
+        reason: unspendable.reason,
+      }
+      writeChunk(
+        JSON.stringify([
+          { faucetInfo: 'CalibnetFIL', error },
+          { faucetInfo: 'CalibnetUSDFC', error },
         ]),
       )
       endResponse()

@@ -257,7 +257,7 @@ export async function registerApiV1(app: FastifyInstance, deps: ApiV1Deps): Prom
         ok: true,
         name: 'Plumbline builder API',
         network: 'calibration',
-        docs: 'https://github.com/Reiers/plumbline-faucet/blob/main/docs/api.md',
+        docs: 'https://github.com/Reiers/plumbline-faucet/blob/main/docs/api-v1.md',
         openapi: '/api/v1/openapi.json',
         stability:
           'v1 is stable: fields may be added but are never removed or renamed. Breaking changes ship as /api/v2.',

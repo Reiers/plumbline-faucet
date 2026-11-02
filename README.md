@@ -59,6 +59,11 @@ POST /api/v1/drip/fil        alias of POST /api/drip/fil (same auth and limits)
 POST /api/v1/drip/usdfc      alias of POST /api/drip/usdfc (same auth and limits)
 ```
 
+Builder API v1 reference, stability promise and error codes:
+[`docs/api-v1.md`](docs/api-v1.md). Command-line client:
+[`scripts/plumbline-cli`](scripts/plumbline-cli) (`status`, `network`, `sp`,
+`drips`). Changes: [`CHANGELOG.md`](CHANGELOG.md).
+
 Full API reference for CLI / CI integrators: [`docs/api.md`](docs/api.md).
 Web-UI callers use Turnstile; CLI / CI callers should use an API key
 (`Authorization: Bearer <key>`) issued by the operator — see
@@ -177,7 +182,7 @@ deployment without Turnstile.**
 pnpm test
 ```
 
-Runs the builder API v1 suite. It starts the real server against a
+Runs the builder API v1, unspendable-address and CLI suites. It starts the real server against a
 local fake RPC and a fake Calix, so no chain access or funds are
 needed.
 

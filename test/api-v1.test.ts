@@ -30,7 +30,8 @@ async function post(base: string, p: string, json: unknown, headers: Record<stri
 }
 
 const ip = (n: number) => ({ 'x-forwarded-for': '198.51.100.' + n })
-const addr = (n: number) => '0x' + n.toString(16).padStart(40, '0')
+// Outside the precompile ranges refused as unspendable.
+const addr = (n: number) => '0xab' + n.toString(16).padStart(38, '0')
 
 describe('builder API v1 (main instance)', () => {
   let rpc: FakeRpc

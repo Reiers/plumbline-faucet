@@ -55,7 +55,12 @@ import { RateLimitStore } from './rate-limit-store.js'
 import { StatsStore } from './stats-store.js'
 import { Drip } from './drip.js'
 import { verifyTurnstile } from './turnstile.js'
-import { classifyRecipient } from './fil-address.js'
+import {
+  classifyRecipient,
+  unspendableReason,
+  UNSPENDABLE_MESSAGE,
+  type RecipientShape,
+} from './fil-address.js'
 import { ApiKeyStore, type ApiKey } from './api-key-store.js'
 import { registerApiV1 } from './api-v1.js'
 
@@ -276,6 +281,21 @@ async function main() {
     }
   })
 
+  // ─── Unspendable recipients (zero address, precompiles, system actors)
+  // Checked on every drip path right after address parsing, before
+  // captcha, rate limits or any RPC call, so a refused request never
+  // burns a quota or sends a transaction.
+  const unspendableBody = (recipient: RecipientShape) => {
+    const why = unspendableReason(recipient)
+    if (!why) return null
+    return {
+      ok: false as const,
+      error: 'unspendable_address',
+      reason: why,
+      message: UNSPENDABLE_MESSAGE[why],
+    }
+  }
+
   // ─── Drip handlers (one per asset) ──────────────────────────────
   const dripBody = z.object({
     // Native BLS (t3) addresses are 86 chars; allow some headroom.
@@ -303,6 +323,11 @@ async function main() {
         error: 'invalid_address',
         reason: recipient.reason,
       })
+    }
+    const unspendable = unspendableBody(recipient)
+    if (unspendable) {
+      app.log.warn({ asset, reason: unspendable.reason, ip }, 'refused unspendable recipient')
+      return reply.code(400).send(unspendable)
     }
     if (asset === 'usdfc' && recipient.kind === 'filecoin') {
       return reply.code(400).send({
@@ -503,6 +528,11 @@ async function main() {
         reason: recipient.reason,
       })
     }
+    const unspendable = unspendableBody(recipient)
+    if (unspendable) {
+      app.log.warn({ asset, reason: unspendable.reason, ip }, 'refused unspendable recipient')
+      return reply.code(400).send(unspendable)
+    }
     if (asset === 'usdfc' && recipient.kind === 'filecoin') {
       return reply.code(400).send({
         ok: false,
@@ -638,7 +668,7 @@ async function main() {
   type ChainSafeClaim = {
     faucetInfo: string
     tx_hash?: string
-    error?: { message: string }
+    error?: { message: string; code?: string; reason?: string }
   }
   const chainSafeAssetMap = [
     { asset: 'fil' as Asset, label: 'CalibnetFIL' },
@@ -708,6 +738,24 @@ async function main() {
             faucetInfo: 'CalibnetUSDFC',
             error: { message: `invalid address: ${recipient.reason}` },
           },
+        ]),
+      )
+      endResponse()
+      return
+    }
+    const unspendable = unspendableBody(recipient)
+    if (unspendable) {
+      app.log.warn({ route: 'claim_token_all', reason: unspendable.reason, ip }, 'refused unspendable recipient')
+      reply.raw.statusCode = 400
+      const error = {
+        message: 'unspendable_address: ' + unspendable.message,
+        code: 'unspendable_address',
+        reason: unspendable.reason,
+      }
+      writeChunk(
+        JSON.stringify([
+          { faucetInfo: 'CalibnetFIL', error },
+          { faucetInfo: 'CalibnetUSDFC', error },
         ]),
       )
       endResponse()

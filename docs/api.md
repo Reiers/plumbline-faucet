@@ -421,6 +421,7 @@ All errors are JSON with `ok: false` and an `error` code. HTTP status reflects t
 |------|-----------------------------|-------------------------------------------------------------|
 | 400  | `bad_request`               | body didn't parse                                           |
 | 400  | `invalid_address`           | address couldn't be classified                              |
+| 400  | `unspendable_address`       | zero address, precompile, masked ID (0xff00...), burn address or built-in actor (t00 to t099); `reason` says which |
 | 400  | `usdfc_native_unsupported`  | tried to drip USDFC to a native t1/t3 address               |
 | 400  | `captcha`                   | no API key, and Turnstile token was missing or invalid      |
 | 401  | `invalid_api_key`           | API key header present but not recognised                   |

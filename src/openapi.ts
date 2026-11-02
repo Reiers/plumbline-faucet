@@ -99,7 +99,7 @@ const dripPost = (asset: 'fil' | 'usdfc') => ({
     requestBody: { required: true, content: { 'application/json': { schema: dripRequest } } },
     responses: {
       '200': { description: 'Drip sent and confirmed on chain.', content: { 'application/json': { schema: ref('DripResult') } } },
-      '400': errorResponse('bad_request, invalid_address, usdfc_native_unsupported or captcha.'),
+      '400': errorResponse('bad_request, invalid_address, unspendable_address (zero address, precompile, masked ID address, burn address or built-in actor), usdfc_native_unsupported or captcha.'),
       '401': errorResponse('invalid_api_key or revoked_api_key.'),
       '429': errorResponse('ip_rate_limited, address_rate_limited, api_key_rate_limited or rate_limited. Body includes retryAfterSec and retryAtUnix.'),
       '500': errorResponse('drip_failed.'),

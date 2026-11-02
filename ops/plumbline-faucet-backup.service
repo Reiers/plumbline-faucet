@@ -1,0 +1,11 @@
+[Unit]
+Description=Plumbline faucet SQLite backup (one-shot, invoked by timer)
+
+[Service]
+Type=oneshot
+# Do not load .env here: it holds FAUCET_PK and the backup does not need it.
+Environment=RATE_LIMIT_DB=/opt/plumbline-faucet/rate-limits.sqlite
+Environment=BACKUP_DIR=/var/backups/plumbline-faucet
+Environment=KEEP_DAYS=7
+ExecStart=/opt/plumbline-faucet/ops/backup.sh
+Nice=10

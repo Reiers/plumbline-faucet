@@ -3,12 +3,15 @@
 // Plumbline operator CLI for managing API keys.
 //
 // Usage:
-//   pnpm run keygen -- create --name "Lee CLI test runner" \
+//   pnpm run keygen create --name "Lee CLI test runner" \
 //     [--max-drips 50] [--window-sec 86400] [--notes "lee@example.com"]
 //
-//   pnpm run keygen -- list
-//   pnpm run keygen -- revoke <key>
-//   pnpm run keygen -- enable <key>
+//   pnpm run keygen list
+//   pnpm run keygen revoke <key>
+//   pnpm run keygen enable <key>
+//
+// (No "--" before the subcommand: pnpm passes it through and the tool
+// then prints its help.)
 //
 // The store lives in the same SQLite file as the rate-limit store
 // (RATE_LIMIT_DB env var, default ./rate-limits.sqlite).

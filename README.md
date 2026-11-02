@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://github.com/Reiers/plumbline">
-    <img src="https://raw.githubusercontent.com/Reiers/plumbline/main/brand/banner.png" alt="Plumbline — public faucet" />
+    <img src="https://raw.githubusercontent.com/Reiers/plumbline/main/brand/banner.png" alt="Plumbline: public faucet" />
   </a>
 </div>
 
@@ -8,7 +8,7 @@
 
 Public Filecoin Calibration testnet faucet. Drips **tFIL** and **USDFC** independently for builders and Storage Providers. Live at **<https://faucet.reiers.io>**.
 
-Part of the [**Plumbline**](https://github.com/Reiers/plumbline) umbrella — stability infrastructure for Filecoin Calibration.
+Part of the [**Plumbline**](https://github.com/Reiers/plumbline) umbrella: stability infrastructure for Filecoin Calibration.
 
 > _Calibration testnet only. Don't deploy this to mainnet._
 
@@ -17,7 +17,7 @@ Part of the [**Plumbline**](https://github.com/Reiers/plumbline) umbrella — st
 ## What this is
 
 A two-asset public faucet for Filecoin Calibration. tFIL and USDFC are
-served from independent panels — take only what you need. Designed
+served from independent panels; take only what you need. Designed
 for:
 
 - **Builders** writing FEVM contracts that need gas + USDFC settlement
@@ -66,7 +66,7 @@ Builder API v1 reference, stability promise and error codes:
 
 Full API reference for CLI / CI integrators: [`docs/api.md`](docs/api.md).
 Web-UI callers use Turnstile; CLI / CI callers should use an API key
-(`Authorization: Bearer <key>`) issued by the operator — see
+(`Authorization: Bearer <key>`) issued by the operator, see
 [`docs/api.md`](docs/api.md) for the request flow.
 
 ### Drip request (browser / captcha)
@@ -130,12 +130,11 @@ Errors:
 | --- | --- | --- |
 | `0x...`         (Ethereum-style)        | ✓ direct send | ✓ direct send |
 | `t410f...`      (delegated EAM)         | ✓ extract embedded 0x and send | ✓ extract embedded 0x and send |
-| `t1...` / `t3...` (native secp256k1/BLS)| ✗ pending — use delegated 0x | ✗ USDFC is ERC-20 |
-| `t0...`         (numeric actor ID)      | ✗ pending — use delegated 0x | ✗ USDFC is ERC-20 |
+| `t1...` / `t3...` (native secp256k1/BLS)| ✓ via `CallActorForwarder` | ✗ USDFC is ERC-20 |
+| `t0...`         (numeric actor ID)      | ✓ via `CallActorForwarder` | ✗ USDFC is ERC-20 |
 
-Native t1/t3/t0 sends via the FEVM `CallActor` precompile are on the
-roadmap. SPs running `lotus state account-key-eth <t1addr>` get back
-their delegated 0x form, which works today.
+Native t1/t3/t0 tFIL sends go through the `CallActorForwarder`
+contract (`contracts/`, address in `CALL_ACTOR_FORWARDER`).
 
 ## Defaults
 
@@ -205,10 +204,11 @@ the Calibration faucet behaviour is unchanged.
 
 ## Production deploy
 
-See [`docs/deploy.md`](docs/deploy.md) for the Hetzner + nginx
-walkthrough, including dispenser bootstrap (chainsafe drip → Trove
-mint), TLS via Cloudflare Origin CA, top-up / key-rotation
-operations, and a failure-modes table.
+See [`docs/deploy.md`](docs/deploy.md) for the Ubuntu + nginx +
+Cloudflare walkthrough: dispenser bootstrap, `.env` reference, TLS via
+Cloudflare Origin CA (`ops/plumbline-faucet.nginx`), daily SQLite
+backups (`ops/backup.sh`), API keys, top-up, key rotation, and a
+failure-modes table.
 
 ## Security model
 
@@ -232,7 +232,7 @@ operations, and a failure-modes table.
   are never persisted at info level.
 - **No IP attribution in `recent_drips`.** The public `/api/recent`
   endpoint shows recent rows verbatim, so we deliberately don't
-  store IP alongside drip records — only the address.
+  store IP alongside drip records, only the address.
 - **On-chain verification.** Every drip awaits the receipt AND
   re-reads the recipient balance to confirm the funds actually
   landed before returning to the client. The `verified` boolean
@@ -248,7 +248,7 @@ Need a larger transfer or a custom amount?
 
 ## Roadmap
 
-- [ ] Native `t1` / `t3` / `t0` send via the FEVM `CallActor`
+- [x] Native `t1` / `t3` / `t0` tFIL send via the FEVM `CallActor`
       precompile
 - [ ] Auto-refill of the dispenser from external Calibration faucets
       when tFIL drops below a threshold

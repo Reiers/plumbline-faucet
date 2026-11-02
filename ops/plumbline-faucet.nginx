@@ -1,0 +1,63 @@
+# /etc/nginx/sites-available/faucet.reiers.io
+#
+# Plumbline faucet behind Cloudflare (orange cloud). TLS uses the
+# Cloudflare Origin CA cert. The upstream port must match PORT in
+# /opt/plumbline-faucet/.env and HOST there should be 127.0.0.1.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name faucet.reiers.io;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name faucet.reiers.io;
+
+    ssl_certificate     /etc/ssl/cloudflare/reiers.io.crt;
+    ssl_certificate_key /etc/ssl/cloudflare/reiers.io.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Drips wait for on-chain confirmation; keep the read timeout above
+    # the typical 30 to 60 s confirmation time.
+    proxy_read_timeout    90s;
+    proxy_connect_timeout 10s;
+    client_max_body_size  16k;
+
+    # Recover the real client IP from Cloudflare. Only Cloudflare ranges
+    # are trusted to set CF-Connecting-IP.
+    set_real_ip_from 173.245.48.0/20;
+    set_real_ip_from 103.21.244.0/22;
+    set_real_ip_from 103.22.200.0/22;
+    set_real_ip_from 103.31.4.0/22;
+    set_real_ip_from 141.101.64.0/18;
+    set_real_ip_from 108.162.192.0/18;
+    set_real_ip_from 190.93.240.0/20;
+    set_real_ip_from 188.114.96.0/20;
+    set_real_ip_from 197.234.240.0/22;
+    set_real_ip_from 198.41.128.0/17;
+    set_real_ip_from 162.158.0.0/15;
+    set_real_ip_from 104.16.0.0/13;
+    set_real_ip_from 104.24.0.0/14;
+    set_real_ip_from 172.64.0.0/13;
+    set_real_ip_from 131.0.72.0/22;
+    real_ip_header CF-Connecting-IP;
+
+    location / {
+        proxy_pass http://127.0.0.1:8003;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        # Overwrite, do not append: the faucet takes the left-most
+        # X-Forwarded-For entry as the client IP, so a client-supplied
+        # header must never reach it.
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}

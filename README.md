@@ -182,9 +182,26 @@ deployment without Turnstile.**
 pnpm test
 ```
 
-Runs the builder API v1, unspendable-address and CLI suites. It starts the real server against a
+Runs the builder API v1, unspendable-address, CLI and mainnet-preview unit suites. It starts the real server against a
 local fake RPC and a fake Calix, so no chain access or funds are
 needed.
+
+## Mainnet preview (USDFC + FIL, capped)
+
+A second instance of this codebase, started with `NETWORK=mainnet`,
+serves small capped amounts of Filecoin **mainnet** USDFC and FIL to
+FoC integrators at <https://faucet.reiers.io/mainnet/>. Captcha is
+required, caps are per address, per IP, per subnet, per 24h and per
+calendar month, with a float reserve floor, abuse auto-blocking,
+Prometheus metrics and a kill switch. It ships as a mainnet preview,
+not yet activated: drips are disabled until the operator loads the
+float at activation. Code lives in `src/mainnet/`;
+the Calibration faucet behaviour is unchanged.
+
+- Policy, caps and API: [docs/mainnet-preview.md](docs/mainnet-preview.md)
+- Operator runbook: [docs/mainnet-activation-runbook.md](docs/mainnet-activation-runbook.md)
+- Tests: `pnpm test` (unit) and `pnpm test:mainnet-rpc` (adds read-only
+  checks against the mainnet USDFC contract)
 
 ## Production deploy
 

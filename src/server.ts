@@ -70,6 +70,18 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 async function main() {
+  // NETWORK=mainnet runs the mainnet preview (src/mainnet/) instead of
+  // the calibration faucet. Unset or "calibration" keeps the behaviour
+  // below unchanged.
+  const network = (process.env.NETWORK ?? 'calibration').toLowerCase()
+  if (network === 'mainnet') {
+    const { startMainnet } = await import('./mainnet/server.js')
+    return startMainnet()
+  }
+  if (network !== 'calibration') {
+    throw new Error(`unknown NETWORK "${process.env.NETWORK}" (expected calibration or mainnet)`)
+  }
+
   const cfg = loadConfig()
   const store = new RateLimitStore(cfg.RATE_LIMIT_DB)
   const stats = new StatsStore(store.db)

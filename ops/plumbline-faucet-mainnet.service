@@ -1,0 +1,36 @@
+[Unit]
+Description=Plumbline Mainnet Preview Faucet (USDFC + FIL, capped)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=faucet-mainnet
+Group=faucet-mainnet
+WorkingDirectory=/opt/plumbline-faucet-mainnet
+EnvironmentFile=/opt/plumbline-faucet-mainnet/.env
+# Belt and braces: the shared entrypoint only runs mainnet code when
+# NETWORK=mainnet, and mainnet config refuses to load without it.
+Environment=NETWORK=mainnet
+ExecStart=/usr/bin/env pnpm start
+Restart=always
+RestartSec=5
+# Exit code 2 = bad config or wrong chain id. Do not crash-loop on it.
+RestartPreventExitStatus=2
+StandardOutput=journal
+StandardError=journal
+
+# Hardening (same profile as the calibration unit)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/opt/plumbline-faucet-mainnet
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

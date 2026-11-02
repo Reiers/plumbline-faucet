@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Plumbline Mainnet Preview (not yet activated): USDFC + FIL for FoC integrators</title>
+<meta name="description" content="Small amounts of Filecoin mainnet USDFC and FIL for builders testing paid Filecoin Onchain Cloud flows. Capped, rate limited, captcha protected." />
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e; --warn:#f0b429; --ok:#3fb950; --bad:#f85149; --acc:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 18px 60px; }
+  .banner { background: var(--warn); color:#111; font-weight:700; letter-spacing:.06em; text-align:center; padding:10px; border-radius:8px; }
+  .banner small { display:block; font-weight:500; letter-spacing:0; }
+  h1 { font-size: 26px; margin: 22px 0 6px; }
+  p.lead { color: var(--dim); margin-top: 0; }
+  .panel { background: var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; margin-top:18px; }
+  label { display:block; font-size:13px; color:var(--dim); margin-bottom:6px; }
+  input[type=text] { width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line); background:#0b0f14; color:var(--fg); font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .row { display:flex; gap:10px; margin-top:14px; flex-wrap: wrap; }
+  button { flex:1; min-width: 180px; padding:11px 14px; border-radius:8px; border:1px solid var(--line); background:#21262d; color:var(--fg); font-weight:600; cursor:pointer; }
+  button:hover:not(:disabled) { border-color: var(--acc); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #ts { margin-top: 14px; min-height: 66px; }
+  #result { margin-top:14px; white-space: pre-wrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .dim { color: var(--dim); }
+  table { width:100%; border-collapse: collapse; font-size:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color: var(--dim); font-weight:500; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; color:#d2a8ff; }
+  a { color: var(--acc); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <div class="banner"><span id="label">MAINNET PREVIEW (NOT YET ACTIVATED)</span> <small>Real Filecoin mainnet funds once activated. Small, capped amounts for integration testing only.</small></div>
+  <h1>Mainnet USDFC + FIL for FoC integrators</h1>
+  <p class="lead">Get a small amount of mainnet USDFC and FIL to test paid Filecoin Onchain Cloud deal flows end to end. Every drip is capped per address, per IP and globally per month. Captcha required.</p>
+
+  <div id="paused" class="panel" hidden><b class="bad">Mainnet preview (not yet activated).</b> <span class="dim">Drips are disabled until the operator loads the float and turns them on.</span></div>
+  <div id="unfunded" class="panel" hidden><b class="bad">Float not funded.</b> <span class="dim" id="unfunded-assets"></span></div>
+  <div class="panel dim" style="font-size:14px"><span id="statusNote"></span></div>
+  <div id="dryrun" class="panel" hidden><b>Dry run.</b> <span class="dim">This instance simulates sends against mainnet and does not move funds yet.</span></div>
+
+  <div class="panel">
+    <label for="addr">Recipient (0x or f410f address)</label>
+    <input id="addr" type="text" placeholder="0x... or f410f..." autocomplete="off" spellcheck="false" />
+    <div id="ts"></div>
+    <div class="row">
+      <button id="btn-usdfc" disabled>Send USDFC</button>
+      <button id="btn-fil" disabled>Send FIL</button>
+    </div>
+    <div id="result" class="dim"></div>
+  </div>
+
+  <div class="panel">
+    <b>Caps</b> <span class="dim" id="caps-note"></span>
+    <table id="caps"><thead><tr><th></th><th>USDFC</th><th>FIL</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="panel">
+    <b>Float and budget</b> <span class="dim">(live)</span>
+    <table id="status"><thead><tr><th></th><th>USDFC</th><th>FIL</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="panel dim" style="font-size:14px">
+    <p style="margin-top:0">Need more for CI? Named integrators can get an API key with their own caps (no captcha). Ask the operator.</p>
+    <p>Token: <code id="token"></code> &middot; Chain id <code>314</code> &middot; Dispenser <code id="disp"></code></p>
+    <p style="margin-bottom:0">Docs: <a href="https://github.com/Reiers/plumbline-faucet/blob/main/docs/mainnet-preview.md">mainnet-preview.md</a> &middot; JSON: <a href="api/info">api/info</a>, <a href="api/status">api/status</a>, <a href="metrics">metrics</a> &middot; Calibration faucet: <a href="/">here</a></p>
+  </div>
+</main>
+<script>
+(function () {
+  // Served under /mainnet/ in production; resolve API calls relative to the page.
+  var base = location.pathname.replace(/[^/]*$/, '');
+  var $ = function (id) { return document.getElementById(id); };
+  var info = null, widget = null, token = '';
+  function days(sec) { var d = sec / 86400; return d === Math.round(d) ? d + ' days' : Math.round(sec / 3600) + ' h'; }
+  function fill(sel, rows) { var tb = document.querySelector(sel + ' tbody'); tb.innerHTML = ''; rows.forEach(function (r) { var tr = document.createElement('tr'); r.forEach(function (c, i) { var el = document.createElement(i ? 'td' : 'th'); el.textContent = c; tr.appendChild(el); }); tb.appendChild(tr); }); }
+  function setBusy(b) {
+    $('btn-usdfc').disabled = b || !token || $('btn-usdfc').dataset.off === '1';
+    $('btn-fil').disabled = b || !token || $('btn-fil').dataset.off === '1';
+  }
+
+  fetch(base + 'api/info').then(function (r) { return r.json(); }).then(function (i) {
+    info = i; var p = i.policy;
+    $('token').textContent = i.usdfc.address; $('disp').textContent = i.dispenser;
+    $('paused').hidden = !i.paused; $('dryrun').hidden = !i.dryRun;
+    $('statusNote').textContent = i.statusNote;
+    $('label').textContent = (i.label || 'Mainnet preview').toUpperCase();
+    $('caps-note').textContent = '(address window ' + days(p.addressWindowSec) + ', IP window ' + days(p.ipWindowSec) + ', monthly = calendar month UTC)';
+    fill('#caps', [
+      ['Per drip', [p.usdfc.perDrip, p.fil.perDrip]],
+      ['Per address', [p.usdfc.perAddressCap, p.fil.perAddressCap]],
+      ['Per IP', [p.usdfc.perIpCap, p.fil.perIpCap]],
+      ['Per /24 subnet', [p.usdfc.perSubnetCap, p.fil.perSubnetCap]],
+      ['Global per 24h', [p.usdfc.dailyGlobalCap, p.fil.dailyGlobalCap]],
+      ['Global per month', [p.usdfc.monthlyGlobalCap, p.fil.monthlyGlobalCap]]
+    ].map(function (r) { return [r[0]].concat(r[1]); }));
+    var render = function () {
+      if (!window.turnstile) return setTimeout(render, 200);
+      widget = turnstile.render('#ts', { sitekey: i.captcha.siteKey, action: i.captcha.action || undefined, theme: 'dark',
+        callback: function (t) { token = t; setBusy(false); }, 'expired-callback': function () { token = ''; setBusy(false); } });
+    };
+    if (!i.paused) render();
+  }).catch(function (e) { $('result').textContent = 'Could not load faucet info: ' + e; });
+
+  function loadStatus() {
+    fetch(base + 'api/status').then(function (r) { return r.json(); }).then(function (s) {
+      var u = s.assets.usdfc, f = s.assets.fil;
+      fill('#status', [
+        ['Funded', u.funded === null ? '?' : u.funded ? 'yes' : 'no', f.funded === null ? '?' : f.funded ? 'yes' : 'no'],
+        ['Float balance', u.balance === null ? '?' : u.balance, f.balance === null ? '?' : f.balance],
+        ['Reserve floor', u.reserveFloor, f.reserveFloor],
+        ['Sent this month', u.monthToDate + ' / ' + u.monthlyCap, f.monthToDate + ' / ' + f.monthlyCap],
+        ['Sent last 24h', u.last24h + ' / ' + u.dailyCap, f.last24h + ' / ' + f.dailyCap],
+        ['Accepting drips', u.acceptingDrips ? 'yes' : 'no', f.acceptingDrips ? 'yes' : 'no']
+      ]);
+      $('paused').hidden = !s.paused;
+      var dry = ['usdfc', 'fil'].filter(function (a) { return s.assets[a].funded === false; });
+      $('unfunded').hidden = s.paused || dry.length === 0;
+      $('unfunded-assets').textContent = dry.map(function (a) { return a.toUpperCase(); }).join(' and ') + ' cannot be sent right now. ' + (s.statusNote || '');
+      $('btn-usdfc').dataset.off = u.acceptingDrips ? '' : '1';
+      $('btn-fil').dataset.off = f.acceptingDrips ? '' : '1';
+      setBusy(false);
+    }).catch(function () {});
+  }
+  loadStatus(); setInterval(loadStatus, 30000);
+
+  function drip(asset) {
+    var address = $('addr').value.trim();
+    if (!address) { $('result').className = 'bad'; $('result').textContent = 'Enter a 0x or f410f address.'; return; }
+    setBusy(true); $('result').className = 'dim'; $('result').textContent = 'Sending ' + asset.toUpperCase() + ' on mainnet. This can take a minute while the block lands...';
+    fetch(base + 'api/drip/' + asset, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address: address, turnstileToken: token }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.ok) { $('result').className = 'ok'; $('result').textContent = 'Sent ' + j.amount + ' ' + asset.toUpperCase() + ' (' + j.status + ')' + (j.explorerUrl ? '\n' + j.explorerUrl : '') + (j.note ? '\n' + j.note : ''); }
+        else { $('result').className = 'bad'; $('result').textContent = (j.error || 'error') + (j.reason ? ': ' + j.reason : '') + (j.retryAtUnix ? '\nRetry after ' + new Date(j.retryAtUnix * 1000).toISOString() : ''); }
+      })
+      .catch(function (e) { $('result').className = 'bad'; $('result').textContent = String(e); })
+      .finally(function () { token = ''; if (widget !== null && window.turnstile) turnstile.reset(widget); setBusy(false); loadStatus(); });
+  }
+  $('btn-usdfc').onclick = function () { drip('usdfc'); };
+  $('btn-fil').onclick = function () { drip('fil'); };
+})();
+</script>
+</body>
+</html>

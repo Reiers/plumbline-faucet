@@ -1,0 +1,41 @@
+name: mainnet-preview
+
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Daily: catch drift in the mainnet USDFC contract or RPC behaviour.
+    - cron: '17 5 * * *'
+
+concurrency:
+  group: mainnet-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # Unit tests (caps, monthly cap, reserve floor, rate limits, abuse
+      # rules, kill switch, API keys, metrics) plus read-only tests
+      # against the Filecoin mainnet USDFC contract bindings. Nothing is
+      # signed or broadcast.
+      - name: Tests incl. mainnet contract bindings
+        run: pnpm test:mainnet-rpc
+        env:
+          MAINNET_RPC_URL: https://api.node.glif.io/rpc/v1

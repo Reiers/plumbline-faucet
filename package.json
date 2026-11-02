@@ -10,6 +10,7 @@
     "start": "tsx src/server.ts",
     "keygen": "tsx src/keygen.ts",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
     "format": "prettier -w src public"
   },
   "dependencies": {

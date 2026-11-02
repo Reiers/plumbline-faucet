@@ -21,6 +21,9 @@
 //   POST /api/public/drip/usdfc  { address } → small anonymous USDFC drip
 //   GET  /api/claim_token_all?address=...      → ChainSafe-compatible
 //                                                 envelope, both tokens
+//   /api/v1/*               builder API v1 (see src/api-v1.ts): read-only
+//                           status endpoints plus POST /api/v1/drip/{fil,usdfc}
+//                           aliases of the drip handlers above
 //
 // Anonymous public-drip endpoints (intended for public OSS CLIs that
 // cannot embed a secret, e.g. SynapS3's `synaps3 wallet fund-testnet`):
@@ -54,6 +57,7 @@ import { Drip } from './drip.js'
 import { verifyTurnstile } from './turnstile.js'
 import { classifyRecipient } from './fil-address.js'
 import { ApiKeyStore, type ApiKey } from './api-key-store.js'
+import { registerApiV1 } from './api-v1.js'
 
 const USDFC_DECIMALS = 18
 
@@ -453,6 +457,18 @@ async function main() {
 
   app.post('/api/drip/fil', async (req, reply) => handleDrip('fil', req, reply))
   app.post('/api/drip/usdfc', async (req, reply) => handleDrip('usdfc', req, reply))
+
+  // ─── Builder API v1 (/api/v1/*) ─────────────────────────────────
+  // Versioned read-only endpoints plus stable aliases of the two drip
+  // routes above. The aliases call handleDrip directly, so captcha,
+  // API-key auth and every rate limit are shared with /api/drip/*.
+  await registerApiV1(app, {
+    cfg,
+    stats,
+    dispenserAddress: drip.dispenserAddress,
+    getDispenserState: () => drip.state(),
+    handleDrip,
+  })
 
   // ─── Anonymous public-drip endpoints (no auth, no captcha) ────────
   //

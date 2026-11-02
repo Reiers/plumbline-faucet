@@ -50,6 +50,33 @@
         </div>
       </section>
 
+      <!-- ── Builder API v1 ──────────────────────────────────────── -->
+      <section class="card api-doc-card" id="v1">
+        <h2 class="card-title">Builder API v1 <span class="card-subtle">stable, read-only, no auth</span></h2>
+        <p class="contact-text">
+          Versioned JSON for tooling. Every response carries
+          <code>apiVersion: "1"</code> and <code>Access-Control-Allow-Origin: *</code>.
+          Reads are limited to 60 requests per minute per IP and report
+          <code>RateLimit-*</code> headers. Errors use one envelope:
+          <code>{ apiVersion, ok: false, error, message }</code>.
+          Within v1 fields are only added, never removed or renamed.
+          Full description: <a href="/api/v1/openapi.json" target="_blank"><code>/api/v1/openapi.json</code></a> (OpenAPI 3.1).
+        </p>
+        <table class="api-table">
+          <thead><tr><th>Method</th><th>Path</th><th>Returns</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET</code></td><td><a href="/api/v1" target="_blank"><code>/api/v1</code></a></td><td>index of endpoints</td></tr>
+            <tr><td><code>GET</code></td><td><a href="/api/v1/faucet/status" target="_blank"><code>/api/v1/faucet/status</code></a></td><td>healthy flag, balances, reserve floors, drip amounts, public limits</td></tr>
+            <tr><td><code>GET</code></td><td><a href="/api/v1/faucet/drips" target="_blank"><code>/api/v1/faucet/drips</code></a></td><td>recent drips with amount, tx and explorer link (<code>limit</code>, <code>offset</code>)</td></tr>
+            <tr><td><code>GET</code></td><td><a href="/api/v1/network" target="_blank"><code>/api/v1/network</code></a></td><td>Calibration health from Calix, cached 30s, with <code>source</code> and <code>fetchedAt</code></td></tr>
+            <tr><td><code>GET</code></td><td><a href="/api/v1/sp" target="_blank"><code>/api/v1/sp</code></a></td><td>SP test-target status (t0143103) from Calix</td></tr>
+            <tr><td><code>GET</code></td><td><a href="/api/v1/openapi.json" target="_blank"><code>/api/v1/openapi.json</code></a></td><td>OpenAPI 3.1 description</td></tr>
+            <tr><td><code>POST</code></td><td><code>/api/v1/drip/fil</code></td><td>alias of <code>/api/drip/fil</code>, same auth and limits</td></tr>
+            <tr><td><code>POST</code></td><td><code>/api/v1/drip/usdfc</code></td><td>alias of <code>/api/drip/usdfc</code>, same auth and limits</td></tr>
+          </tbody>
+        </table>
+      </section>
+
       <!-- ── Getting a key ─────────────────────────────────────── -->
       <!-- Public drip (no auth) -->
       <section class="card api-doc-card" id="public-drip">

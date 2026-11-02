@@ -10,8 +10,12 @@
     "start": "tsx src/server.ts",
     "keygen": "tsx src/keygen.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
-    "format": "prettier -w src public"
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts src/mainnet/test/*.test.ts",
+    "test:mainnet-rpc": "MAINNET_RPC_TESTS=1 node --import tsx --test --test-concurrency=1 src/mainnet/test/*.test.ts",
+    "format": "prettier -w src public",
+    "start:mainnet": "NETWORK=mainnet tsx src/mainnet/server.ts",
+    "mainnet:admin": "tsx src/mainnet/admin.ts",
+    "mainnet:drain": "tsx src/mainnet/drain.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

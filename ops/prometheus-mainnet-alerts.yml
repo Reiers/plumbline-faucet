@@ -1,0 +1,54 @@
+# Prometheus alert rules for the Plumbline mainnet preview faucet.
+# Scrape target: https://faucet.reiers.io/mainnet/metrics
+# (job name below assumes job="plumbline-mainnet").
+
+groups:
+  - name: plumbline-mainnet-faucet
+    rules:
+      - alert: PlumblineMainnetDown
+        expr: up{job="plumbline-mainnet"} == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Mainnet preview faucet is not answering /metrics"
+
+      - alert: PlumblineMainnetReserveBreach
+        expr: plumbline_mainnet_reserve_breach == 1
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Mainnet {{ $labels.asset }} float is at the reserve floor; drips are refused. Top up the float."
+
+      - alert: PlumblineMainnetReserveLow
+        expr: plumbline_mainnet_reserve_low == 1 and plumbline_mainnet_reserve_breach == 0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Mainnet {{ $labels.asset }} float is close to the reserve floor"
+
+      - alert: PlumblineMainnetMonthlyCap80
+        expr: plumbline_mainnet_outflow_month_wei / plumbline_mainnet_outflow_month_cap_wei >= 0.8
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Mainnet {{ $labels.asset }} month-to-date outflow is at 80% of the cap"
+
+      - alert: PlumblineMainnetRpcDown
+        expr: plumbline_mainnet_rpc_ok == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Mainnet faucet cannot read the dispenser balance from RPC"
+
+      - alert: PlumblineMainnetAbuseBlocks
+        expr: increase(plumbline_mainnet_abuse_trips_total[1h]) > 5
+        labels: { severity: warning }
+        annotations:
+          summary: "Several abuse rules tripped in the last hour ({{ $labels.rule }})"
+
+      - alert: PlumblineMainnetPaused
+        expr: plumbline_mainnet_paused == 1
+        for: 30m
+        labels: { severity: info }
+        annotations:
+          summary: "Mainnet drips are paused by the kill switch"
